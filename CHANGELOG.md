@@ -1,3 +1,8 @@
+## **Unreleased**
+
+- Add missing runtime dependency on the logging gem
+- Fix undefined variable in the service connection cache
+
 ## v0.2.0 2026-06-11
 
 - Add support for managing integration services
