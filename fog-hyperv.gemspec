@@ -21,6 +21,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency 'fog-core', '~> 2'
   spec.add_dependency 'fog-json', '~> 1'
+  spec.add_dependency 'logging', '~> 2'
   spec.add_dependency 'winrm', '~> 2'
 
   spec.add_development_dependency 'minitest'
