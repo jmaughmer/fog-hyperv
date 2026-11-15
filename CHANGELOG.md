@@ -1,4 +1,4 @@
-## **Unreleased**
+## v0.2.1 2026-11-15
 
 - Add missing runtime dependency on the logging gem
 - Fix undefined variable in the service connection cache
