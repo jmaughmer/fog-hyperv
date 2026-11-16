@@ -180,7 +180,8 @@ module Fog::Hyperv
         if local?
           run_cmd('Get-VMHost', _return_fields: :name) && true
         else
-          run_wql('SELECT Name FROM Msvm_ComputerSystem WHERE Caption = "Hosting Computer System"')[:xml_fragment] && true
+          # run_wql already returns the first instance, not the xml_fragment list
+          run_wql('SELECT Name FROM Msvm_ComputerSystem WHERE Caption = "Hosting Computer System"')[:name] && true
         end
       rescue StandardError => e
         logger.debug "Validation failed with #{e.class}; #{e.message}"
@@ -190,7 +191,8 @@ module Fog::Hyperv
       # Does the Hyper-V install support clusters - i.e. is the machine joined to a failover cluster
       # @return [Boolean] is the Hyper-V setup possible to cluster
       def supports_clusters?
-        run_wql('SELECT Name FROM MSCluster_ResourceGroup', _namespace: 'root/mscluster/*')[:xml_fragment] && true
+        # run_wql already returns the first instance, and appends /* itself
+        run_wql('SELECT Name FROM MSCluster_ResourceGroup', _namespace: 'root/mscluster')[:name] && true
       rescue StandardError => e
         logger.debug "Cluster support checking failed with #{e.class}: #{e.message}"
         false

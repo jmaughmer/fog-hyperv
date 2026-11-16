@@ -1,3 +1,9 @@
+## v0.2.2 2026-11-16
+
+- Fix valid? and supports_clusters? always returning false for remote hosts,
+  run_wql already returns the first instance so re-reading xml_fragment off it
+  never worked, which made connection validation and the UI test button fail
+
 ## v0.2.1 2026-11-15
 
 - Add missing runtime dependency on the logging gem
