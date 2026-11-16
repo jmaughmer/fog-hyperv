@@ -12,6 +12,7 @@ module Fog
 
   module Hyperv
     require 'fog/hyperv/constants'
+    require 'fog/hyperv/version'
 
     extend Fog::Provider
 
