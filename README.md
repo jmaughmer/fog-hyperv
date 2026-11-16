@@ -53,6 +53,16 @@ If you're using a local (non-domain) user, you may also need to set the DWORD
 registry value `LocalAccountTokenFilterPolicy` at `HKLM\software\Microsoft\Windows\CurrentVersion\Policies\system`
 to `1`.
 
+A service account that is only a member of *Hyper-V Administrators* will
+authenticate and read WMI fine, then fail every cmdlet with `You do not have
+the required permission to complete this task. Contact the administrator of the
+authorization policy for the computer 'HOST'`. A WinRM logon is a network logon
+and its token is not elevated, and the Hyper-V authorization check rejects such
+a token unless it also carries *BUILTIN\Administrators*. Add the account to the
+local *Administrators* group as well; with `LocalAccountTokenFilterPolicy=1`
+set, remote tokens for local administrator accounts do keep that group enabled
+instead of filtering it out.
+
 ## Development
 
 After checking out the repo, run `bundle install` to install dependencies. Then, run `rake test` to run the tests. You can also run `bundle exec irb` for an interactive prompt that will allow you to experiment.
