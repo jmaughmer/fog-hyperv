@@ -8,6 +8,9 @@
 - Fix DvdDrive#create reading a controller_numbere that does not exist, which
   raised NoMethodError before anything was sent to Hyper-V and made attaching an
   image to a machine through the model impossible
+- Give PSError a message when PowerShell reports nothing, which is what a cmdlet
+  that found nothing to act on does: the exit code is what gets the call raised,
+  and a message of nil turned every report of that failure into a NoMethodError
 
 ## v0.2.1 2026-11-15
 

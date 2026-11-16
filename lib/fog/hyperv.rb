@@ -59,12 +59,22 @@ module Fog
 
         # rubocop:disable Naming/MemoizedInstanceVariableName -- Extracting message, not reading it
         def extract_message
-          stderr = @stderr.split("\n").map(&:strip)
+          stderr = @stderr.to_s.split("\n").map(&:strip).reject(&:empty?)
 
           # Find a line ending in an error ID
           @message = stderr.find { |line| line =~ /\(0x[0-9a-f]+\)\.?$/ }
           # Find the last line that isn't include error class information
           @message ||= stderr.take_while { |line| !line.start_with? '+' }.last
+          # A cmdlet that finds nothing to act on sets $? to false and exits with
+          # 1 without writing anything to the error stream, and that exit code is
+          # what gets the call raised here, so this is reached often. A message of
+          # nil reads as a broken exception wherever it is reported and hides the
+          # one thing the call did report, so say what is known instead.
+          stdout = @stdout.to_s.lines.map(&:strip).reject(&:empty?).first(3)
+          @message ||= [
+            "PowerShell exited with code #{@exitcode} without an error message",
+            ("writing to stdout instead: #{stdout.join ' '}" unless stdout.empty?)
+          ].compact.join ', '
         end
         # rubocop:enable Naming/MemoizedInstanceVariableName
       end
