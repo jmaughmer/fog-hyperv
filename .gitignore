@@ -8,3 +8,13 @@
 /test/reports/
 /tmp/
 /vendor/
+
+# gem build writes the packaged gem next to the gemspec; rake build puts it in
+# /pkg above
+*.gem
+
+# CI output, the rubocop job writes its JUnit report here
+/junit.xml
+
+# yard output, the documentation site the pages job publishes
+/public/
