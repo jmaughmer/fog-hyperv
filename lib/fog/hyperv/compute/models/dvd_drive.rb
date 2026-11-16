@@ -57,7 +57,7 @@ class Fog::Hyperv::Compute
           vm_id: vm_id,
 
           allow_unverified_paths: allow_unverified_paths,
-          controller_number: controller_numbere,
+          controller_number: controller_number,
           controller_location: controller_location,
           path: path,
           resource_pool_name: pool_name,

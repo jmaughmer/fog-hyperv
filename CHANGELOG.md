@@ -5,6 +5,9 @@
   never worked, which made connection validation and the UI test button fail
 - Require the version file, Fog::Hyperv::VERSION was undefined unless the
   gemspec happened to load it
+- Fix DvdDrive#create reading a controller_numbere that does not exist, which
+  raised NoMethodError before anything was sent to Hyper-V and made attaching an
+  image to a machine through the model impossible
 
 ## v0.2.1 2026-11-15
 
