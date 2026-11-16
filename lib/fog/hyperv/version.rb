@@ -3,6 +3,6 @@
 module Fog
   module Hyperv
     # The Fog Hyper-V version
-    VERSION = '0.2.1'
+    VERSION = '0.2.2'
   end
 end
