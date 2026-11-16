@@ -49,7 +49,15 @@ module Fog::Hyperv::Utils::Winrm
         setup = [
           "$ConfirmPreference = 'None'",
           "$ErrorActionPreference = 'Stop'",
-          '$PSNativeCommandUseErrorActionPreference = $true'
+          '$PSNativeCommandUseErrorActionPreference = $true',
+          # A cmdlet that renders a progress bar (Get-FileHash, Invoke-WebRequest,
+          # Copy-Item of anything large) writes that rendering into the response
+          # when it is run over a shell rather than a console, and the control
+          # characters in it make the reply impossible to parse: the call comes
+          # back as a WinRM transport error quoting an illegal character, with
+          # none of the streams and no exit code to read. Nothing asked of
+          # Hyper-V over WinRM has a use for a progress bar.
+          "$ProgressPreference = 'SilentlyContinue'"
         ].join('; ')
         shell.run setup
 

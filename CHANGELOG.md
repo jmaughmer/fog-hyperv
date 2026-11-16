@@ -11,6 +11,10 @@
 - Give PSError a message when PowerShell reports nothing, which is what a cmdlet
   that found nothing to act on does: the exit code is what gets the call raised,
   and a message of nil turned every report of that failure into a NoMethodError
+- Turn off progress rendering in the PowerShell shell. A cmdlet that renders a
+  progress bar writes that rendering into the WinRM response, where its control
+  characters make the reply impossible to parse and the call comes back as a
+  transport error quoting an illegal character instead of anything about itself
 
 ## v0.2.1 2026-11-15
 
