@@ -67,7 +67,27 @@ class Fog::Hyperv::Compute
       return associations[:vhd] if associations[:vhd]
       return unless path
 
-      associations[:vhd] = (vm || service).vhds.get(path, computer_name: computer_name)
+      # Every drive of a machine asking for its own VHD is one call per drive,
+      # each one a full round trip on a high-latency path; the machine's whole
+      # VHD list is one call that every drive on it can share. The collection's
+      # lazy-load guard is what shares it - the first drive reads, the rest
+      # answer from what is already loaded - so the read is reached through
+      # detect rather than asked for again per drive. A drive the list does not
+      # name - attached since it was read, or a file the listing itself chokes
+      # on - still gets the single read this used to do unconditionally.
+      if vm
+        listed = begin
+          vm.vhds.detect { |disk| disk.path&.casecmp?(path) }
+        rescue StandardError => e
+          service.logger.debug "The list of virtual hard disks for #{vm.name} could not be read: #{e.message}"
+          nil
+        end
+        return associations[:vhd] = listed if listed
+
+        associations[:vhd] = vm.vhds.get(path, computer_name: computer_name)
+      else
+        associations[:vhd] = service.vhds.get(path, computer_name: computer_name)
+      end
     end
 
     def vhd=(new_vhd)
