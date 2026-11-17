@@ -36,6 +36,16 @@ class UnitClusterTest < Minitest::Test
     assert_equal 'mock-cluster', @client.clusters.get('becc0c8a-6444-4df5-bcd8-585ebab46518').name
   end
 
+  # Filtering only matters when it can say no, and the answer has to be the one
+  # fog's contract gives: an empty reply used to reach new as nil, which merged into
+  # the creation attributes as a TypeError, so a miss looked like a transport
+  # failure. foreman_hyperv's destroy_vm rescues Fog::Errors::NotFound as "it is
+  # gone", which is the case that never arrived.
+  def test_a_cluster_that_does_not_exist_is_not_found
+    assert_raises(Fog::Errors::NotFound) { @client.clusters.get('no-such-cluster') }
+    assert_raises(Fog::Errors::NotFound) { @client.clusters.get('00000000-0000-0000-0000-000000000000') }
+  end
+
   # Cluster#hosts goes through Get-ClusterNode and then resolves every node name it
   # gets back as a host, which is why it is worth a test of its own: the cluster
   # model is only useful to Foreman if the nodes come out as Host models.

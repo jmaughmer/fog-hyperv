@@ -46,7 +46,14 @@ module Fog::Hyperv
 
     # Get a specific instance in the collection
     def get(**filters)
-      new [service.send(method, **search_attributes, **filters)].flatten.first
+      data = [service.send(method, **search_attributes, **filters)].flatten.first
+      # An empty answer means the thing is not there. Passing it on to new merged nil
+      # into the creation attributes, which is a TypeError out of what is really a
+      # miss, and callers such as ForemanHyperv::Hyperv#destroy_vm already rescue
+      # Fog::Errors::NotFound as the "it is gone" answer
+      raise Fog::Errors::NotFound, "No #{model.name.split('::').last} matching #{filters.compact}" if data.nil?
+
+      new data
     rescue Fog::Hyperv::Errors::PSError => e
       raise Fog::Errors::NotFound, e if e.message =~ /Hyper-V was unable to find|^No .* is found/
 
