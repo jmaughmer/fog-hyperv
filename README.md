@@ -57,7 +57,10 @@ below cannot be had, not as the default.
   `kerberos`, password-based GSSAPI; the calling machine needs working MIT
   Kerberos). Kerberos authenticates the server back to the client, which NTLM
   never does, and costs one round-trip where the NTLM handshake costs several —
-  worth real seconds per connection on a high-latency link.
+  worth real seconds per connection on a high-latency link. The service
+  principal is built as `WSMAN/<host>@<REALM>`, which is what WinRM listeners
+  are registered under; `hyperv_service:` overrides it for a listener published
+  otherwise.
 * `hyperv_client_cert:`/`hyperv_client_key:` (with `hyperv_key_pass:` for an
   encrypted key) authenticate by certificate over `https`, for listeners set up
   with `Negotiate`/`Client` certificate authentication. This is the NTLM-free

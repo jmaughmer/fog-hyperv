@@ -239,6 +239,13 @@ module Fog::Hyperv::Utils::Winrm
       realm: @hyperv_realm
     }
 
+    # The Kerberos service principal is built from this as "<service>/<host>@<realm>",
+    # and the gem refuses a kerberos connection that names no service at all — so a
+    # realm alone, which is all the Kerberos option has ever carried, could never
+    # authenticate. WinRM listeners answer to WSMAN; hyperv_service covers the rare
+    # listener published under a different principal.
+    opts[:service] = @hyperv_service || 'WSMAN' if @hyperv_transport == :kerberos
+
     if URI.parse(endpoint).scheme.to_s.casecmp('https').zero?
       opts[:no_ssl_peer_verification] = true unless @hyperv_ssl_verify
       opts[:ca_trust_path] = @hyperv_ca_trust_path if @hyperv_ca_trust_path

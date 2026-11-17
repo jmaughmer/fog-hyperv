@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Send the Kerberos connection its service principal: the gem builds it as
+  "<service>/<host>@<realm>", refuses a kerberos connection that names none,
+  and fog named none — a realm, which is all the Kerberos option has ever
+  carried, could therefore never authenticate. WinRM listeners answer to
+  WSMAN, which is what is sent now; hyperv_service overrides it for a listener
+  published under another principal
 - Recognise hyperv_operation_timeout, hyperv_receive_timeout,
   hyperv_retry_limit and hyperv_retry_delay and pass them to the WinRM
   connection: the gem's waits describe a local network, and a high-latency or

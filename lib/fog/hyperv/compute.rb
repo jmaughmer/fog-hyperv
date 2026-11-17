@@ -5,7 +5,7 @@ module Fog::Hyperv
     requires :hyperv_username
     recognizes :hyperv_endpoint, :hyperv_host,
                :hyperv_password,
-               :hyperv_transport, :hyperv_realm,
+               :hyperv_transport, :hyperv_realm, :hyperv_service,
                :hyperv_ssl_verify, :hyperv_ca_trust_path,
                :hyperv_client_cert, :hyperv_client_key, :hyperv_key_pass,
                :hyperv_operation_timeout, :hyperv_receive_timeout,
@@ -174,6 +174,7 @@ module Fog::Hyperv
         @hyperv_username = options[:hyperv_username]
         @hyperv_password = options[:hyperv_password]
         @hyperv_realm = options[:hyperv_realm]
+        @hyperv_service = options[:hyperv_service]
         @hyperv_ca_trust_path = options[:hyperv_ca_trust_path]
         @hyperv_client_cert = options[:hyperv_client_cert]
         @hyperv_client_key = options[:hyperv_client_key]
