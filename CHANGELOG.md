@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Ask a newly connected host its short name and its fully qualified one in one
+  shell call rather than two: each was a command and a receive on the wire, and
+  both read the same $env:computerName, so every first contact with an endpoint
+  cost a round trip it did not need
 - Run the shell settings as part of the first command instead of as a call of
   their own: every shell.run is a command and a receive on the wire, so the
   separate settings call was a full round trip paid before every single thing

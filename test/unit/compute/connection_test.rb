@@ -230,6 +230,58 @@ class UnitConnectionTest < Minitest::Test
     assert_equal 'https://hyperv.example:5986/wsman', opts[:endpoint]
   end
 
+  # ---------------------------------------------------------------- discovery
+  #
+  # A brand new connection asked the machine its own name and its DNS name in
+  # two separate shell runs - a command and a receive apiece, each one round
+  # trip its own on the wire - before it could answer anything else. Both names
+  # come off the same $env:computerName, so they are asked together now.
+
+  def discovery_client(stdout)
+    client = OfflineClient.new(
+      hyperv_endpoint: 'http://hyperv.example:5985/wsman',
+      hyperv_username: 'test',
+      hyperv_password: 'test'
+    )
+    calls = []
+    client.define_singleton_method(:run_cmd) do |cmd, **_options|
+      calls << cmd
+      Fog::Hyperv::Utils::Winrm::LocalExecOutput.new(stdout, '', 0)
+    end
+    [client, calls]
+  end
+
+  def test_both_host_names_come_back_in_one_call
+    client, calls = discovery_client("HYPERV-01; hyperv-01.example.com\r\n")
+
+    hostname, fqdn = client.send(:discover_host_names, 'hyperv-01.example.com')
+
+    assert_equal 1, calls.size, 'one call for the two names, not two'
+    assert_equal 'hyperv-01', hostname
+    assert_equal 'hyperv-01.example.com', fqdn
+  end
+
+  # A machine whose name does not resolve keeps the short name and nothing
+  # more: the connection is still usable by the name it was made with, and a
+  # blank must not become a key @connections can answer on
+  def test_a_host_that_reports_no_fully_qualified_name_yields_no_fqdn
+    client, = discovery_client("HYPERV-01; \r\n")
+
+    hostname, fqdn = client.send(:discover_host_names, 'hyperv-01')
+
+    assert_equal 'hyperv-01', hostname
+    assert_nil fqdn
+  end
+
+  def test_an_answer_of_nothing_yields_nothing
+    client, = discovery_client('')
+
+    hostname, fqdn = client.send(:discover_host_names, 'hyperv-01')
+
+    assert_nil hostname
+    assert_nil fqdn
+  end
+
   private
 
   def opts_for(endpoint, options = {})
