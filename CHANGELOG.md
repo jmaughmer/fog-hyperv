@@ -39,6 +39,44 @@
   negotiate always wraps NTLM tokens and NTLM is deprecated by its vendor
   with disabling it the stated end state, so the transports that do not speak
   it should not need to be asked for by name
+- Ask another node of a cluster on the endpoint it actually answers, rather
+  than plain http on port 5985 of the configured host: a cluster that secures
+  WinRM over HTTPS on 5986 could not be managed at all, because the second
+  node got a request to a port nothing listens on and the failure arrived as a
+  transport error naming a host nobody typed
+- Make a virtual machine highly available, and take it back out: Add and
+  Remove ClusterVirtualMachineRole requests that run on the node owning the
+  machine, and a ClusterVirtualMachineRole can be read by the GUID of the
+  machine it was made for, because the removal cmdlet only answers by machine
+- Say which node a machine is really on: Server#owner_node reads the machine's
+  cluster role rather than the node the machine was read from, which goes
+  stale when a role moves, with Server#clustered? and #cluster_role behind it.
+  Cluster#nodes gives the cluster's own view of its nodes — state, votes,
+  drain — without opening a shell on every one the way Cluster#hosts does
+- Read a cluster's networks and how it votes: Cluster#networks says which node
+  has a path onto each shared subnet, and Cluster#quorum is where "will this
+  cluster survive losing that node" starts
+- Read which node owns each clustered virtual machine: Cluster#roles answers a
+  ClusterVirtualMachineRole per clustered machine with its OwnerNode, because
+  Get-VM answers only for the node it ran on and loses sight of a machine the
+  moment its role fails over
+- Read a cluster's shared volumes and the disks left to make more from:
+  Cluster#shared_volumes and #available_disks, which is what placement onto
+  cluster storage has to know before it can offer a destination
+- Answer a miss in a collection with NotFound instead of a TypeError: a get
+  that found nothing merged nil into new, so every caller asking "is this
+  thing gone" got what read like a broken transport, in every collection in
+  the gem and not only clusters
+- Reload a cluster from what Get-Cluster actually returns: a single match is a
+  Hash and several are an array, and neither has #attributes, so Cluster#reload
+  raised NoMethodError against a real host
+- Let a mocked client answer clusters at all: mocked requests read their mock
+  files (the filters were passed in the wrong place, and every request without
+  a Mock of its own raised instead of answering), filter by the same ids and
+  names the real requests filter by, Get-VMHost answers for the machine it was
+  asked about rather than always the fixture's first, and valid? and
+  supports_clusters? answer instead of not existing, which is what lets a
+  consumer's cluster gating be tested
 
 ## v0.2.2 2026-11-16
 
