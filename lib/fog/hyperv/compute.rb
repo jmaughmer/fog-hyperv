@@ -6,9 +6,11 @@ module Fog::Hyperv
     recognizes :hyperv_endpoint, :hyperv_host,
                :hyperv_password,
                :hyperv_transport, :hyperv_realm,
+               :hyperv_ssl_verify, :hyperv_ca_trust_path,
+               :hyperv_client_cert, :hyperv_client_key, :hyperv_key_pass,
                :hyperv_debug
 
-    secrets :hyperv_password, :connection
+    secrets :hyperv_password, :hyperv_key_pass, :connection
 
     model_path 'fog/hyperv/compute/models'
     model :bios
@@ -170,7 +172,33 @@ module Fog::Hyperv
         @hyperv_username = options[:hyperv_username]
         @hyperv_password = options[:hyperv_password]
         @hyperv_realm = options[:hyperv_realm]
-        @hyperv_transport = options[:hyperv_transport] || (@hyperv_realm ? :kerberos : :negotiate)
+        @hyperv_ca_trust_path = options[:hyperv_ca_trust_path]
+        @hyperv_client_cert = options[:hyperv_client_cert]
+        @hyperv_client_key = options[:hyperv_client_key]
+        @hyperv_key_pass = options[:hyperv_key_pass]
+
+        # Verifying the peer's certificate on an https endpoint is the default: the
+        # blanket no_ssl_peer_verification this used to hardcode was set when the
+        # alternative failed every self-signed listener outright, and over a routed
+        # path an unverified listener is only as trustworthy as the nearest router.
+        # hyperv_ssl_verify: false is the deliberate opt-out.
+        @hyperv_ssl_verify = case options.fetch(:hyperv_ssl_verify) { true }
+                             when false, /\A(false|f|no|0)\z/i then false
+                             else true
+                             end
+
+        # What :negotiate actually speaks is NTLM — ruby-winrm wraps NTLM tokens in
+        # the Negotiate scheme and never attempts a Kerberos leg — and NTLM is
+        # deprecated by its vendor, with disabling it by default the stated end
+        # state. A realm answers the same need over Kerberos, and a client
+        # certificate over the transport that authenticates by certificate; both
+        # become the default transport when named and nothing else is.
+        transport = options[:hyperv_transport]
+        if transport.is_a?(String)
+          transport = transport.strip.downcase.to_sym
+          transport = nil if transport.to_s.empty?
+        end
+        @hyperv_transport = transport || (@hyperv_realm ? :kerberos : (@hyperv_client_cert ? :ssl : :negotiate))
 
         # Hide NEGOTIATE logging from WinRM to reduce log spam when debugging
         Logging.logger['WinRM::HTTP::HttpNegotiate'].level = :error

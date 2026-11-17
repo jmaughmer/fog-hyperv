@@ -215,22 +215,44 @@ module Fog::Hyperv::Utils::Winrm
     "#{configured.scheme}://#{host}:#{configured.port}#{configured.path}"
   end
 
-  def connect(endpoint = nil)
-    endpoint ||= @hyperv_endpoint
-    fqdn = URI.parse(endpoint).host
-
-    require 'winrm'
-
+  # Builds the options WinRM::Connection is created with.
+  #
+  # Everything that only means something to a TLS listener - the verification
+  # override, the trust store, the client certificate - is left out of a plain
+  # http endpoint's options, where nothing on the other end could honour it.
+  # Peer verification is on by default: an https endpoint without it encrypts
+  # the conversation but never says who is at the other end, which over a
+  # routed path is encryption that buys nothing. ruby-winrm only acts on
+  # :no_ssl_peer_verification, so leaving it absent is how verification stays on.
+  def winrm_connection_opts(endpoint)
     opts = {
       endpoint: endpoint,
       transport: @hyperv_transport,
       user: @hyperv_username,
       password: @hyperv_password,
-      realm: @hyperv_realm,
-      no_ssl_peer_verification: true
+      realm: @hyperv_realm
     }
 
-    Fog::Logger.debug "Creating WinRM connection with #{opts.merge password: '<REDACTED>'}"
+    if URI.parse(endpoint).scheme.to_s.casecmp('https').zero?
+      opts[:no_ssl_peer_verification] = true unless @hyperv_ssl_verify
+      opts[:ca_trust_path] = @hyperv_ca_trust_path if @hyperv_ca_trust_path
+      opts[:client_cert] = @hyperv_client_cert if @hyperv_client_cert
+      opts[:client_key] = @hyperv_client_key if @hyperv_client_key
+      opts[:key_pass] = @hyperv_key_pass if @hyperv_key_pass
+    end
+
+    opts
+  end
+
+  def connect(endpoint = nil)
+    endpoint ||= @hyperv_endpoint
+    fqdn = URI.parse(endpoint).host
+
+    opts = winrm_connection_opts(endpoint)
+
+    Fog::Logger.debug "Creating WinRM connection with #{opts.merge password: '<REDACTED>', key_pass: '<REDACTED>'}"
+    require 'winrm'
+
     connection = WinRM::Connection.new opts
     connection.logger.level = :error
     @connections[fqdn] = connection
