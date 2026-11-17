@@ -193,12 +193,31 @@ class UnitConnectionTest < Minitest::Test
     assert_equal :negotiate, opts[:transport]
   end
 
+  # The gem assembles the Kerberos principal as "<service>/<host>@<realm>" and
+  # refuses a kerberos connection with no service — a realm on its own, which is
+  # all the Kerberos option has ever carried, could therefore never authenticate
+  def test_the_kerberos_principal_is_named
+    opts = opts_for 'http://hyperv.example:5985/wsman', hyperv_realm: 'EXAMPLE.COM'
+    assert_equal 'WSMAN', opts[:service], 'WinRM listeners answer to WSMAN'
+
+    opts = opts_for 'http://hyperv.example:5985/wsman',
+                    hyperv_transport: 'negotiate',
+                    hyperv_realm: 'EXAMPLE.COM'
+    refute opts.key?(:service), 'a transport that speaks no Kerberos needs no principal'
+
+    opts = opts_for 'http://hyperv.example:5985/wsman',
+                    hyperv_realm: 'EXAMPLE.COM',
+                    hyperv_service: 'CUSTOMSPN'
+    assert_equal 'CUSTOMSPN', opts[:service]
+  end
+
   def test_the_credentials_and_the_realm_reach_the_connection
     opts = opts_for 'https://hyperv.example:5986/wsman', hyperv_realm: 'EXAMPLE.COM'
 
     assert_equal 'test', opts[:user]
     assert_equal 'test', opts[:password]
     assert_equal 'EXAMPLE.COM', opts[:realm]
+    assert_equal 'WSMAN', opts[:service]
     assert_equal 'https://hyperv.example:5986/wsman', opts[:endpoint]
   end
 

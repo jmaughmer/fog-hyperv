@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Send the Kerberos connection its service principal: the gem builds it as
+  "<service>/<host>@<realm>", refuses a kerberos connection that names none,
+  and fog named none — a realm, which is all the Kerberos option has ever
+  carried, could therefore never authenticate. WinRM listeners answer to
+  WSMAN, which is what is sent now; hyperv_service overrides it for a listener
+  published under another principal
 - Recognise hyperv_ssl_verify, hyperv_ca_trust_path, hyperv_client_cert,
   hyperv_client_key and hyperv_key_pass, and give hyperv_transport the
   transport that authenticates by certificate to speak
