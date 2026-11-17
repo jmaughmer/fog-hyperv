@@ -14,7 +14,7 @@ class Fog::Hyperv::Compute
 
   class Mock
     def get_cluster_node(**args)
-      data = handle_mock_response args
+      data = handle_mock_response **args
       data = data.find { |n| n[:name] == args[:name] } if args[:name]
       data
     end

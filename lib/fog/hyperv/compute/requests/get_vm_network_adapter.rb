@@ -28,7 +28,7 @@ class Fog::Hyperv::Compute
     def get_vm_network_adapter(**args)
       requires_one args, :vm_name, :all, :management_os
 
-      data = handle_mock_response(args)
+      data = handle_mock_response(**args)
       if args[:all]
         data
       elsif args[:vm_name]

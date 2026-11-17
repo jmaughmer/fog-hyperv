@@ -207,7 +207,12 @@ module Fog::Hyperv
 
       def method_missing(method, *args)
         if requests.find { |_, k| k == method }
-          handle_mock_response((args.first || {}).merge(_method: method))
+          # handle_mock_response takes keyword arguments, and a request's arguments
+          # arrive here as a positional Hash, so they have to be splatted: passed
+          # through as-is, every request that has no Mock of its own raised
+          # "wrong number of arguments (given 1, expected 0)" instead of answering
+          # from its mock file.
+          handle_mock_response(**(args.first || {}), _method: method)
         else
           super
         end

@@ -28,7 +28,7 @@ class Fog::Hyperv::Compute
 
   class Mock
     def get_vm_network_adapter_vlan(**args)
-      data = handle_mock_response(args)
+      data = handle_mock_response(**args)
       if args[:vm_id]
         data.find { |i| i[:vm_id].casecmp(args[:vm_id]).zero? }
       elsif args[:management_os]

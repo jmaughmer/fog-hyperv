@@ -19,7 +19,7 @@ class Fog::Hyperv::Compute
     def get_vm_dvd_drive(**options)
       requires options, :vm_id
 
-      handle_mock_response(args).find { |b| b[:vm_id].casecmp(args[:vm_id]).zero? }
+      handle_mock_response(**args).find { |b| b[:vm_id].casecmp(args[:vm_id]).zero? }
     end
   end
 end

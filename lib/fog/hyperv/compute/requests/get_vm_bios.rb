@@ -15,7 +15,7 @@ class Fog::Hyperv::Compute
 
   class Mock
     def get_vm_bios(**args)
-      handle_mock_response(args).find { |b| b[:vm_id].casecmp(args[:vm_id]).zero? }
+      handle_mock_response(**args).find { |b| b[:vm_id].casecmp(args[:vm_id]).zero? }
     end
   end
 end

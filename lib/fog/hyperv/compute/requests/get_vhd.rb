@@ -13,7 +13,7 @@ class Fog::Hyperv::Compute
   class Mock
     def get_vhd(**args)
       requires_one args, :vm_id, :path, :disk_number
-      data = handle_mock_response args
+      data = handle_mock_response **args
 
       if args[:vm_id]
         data = case args[:vm_id].downcase
