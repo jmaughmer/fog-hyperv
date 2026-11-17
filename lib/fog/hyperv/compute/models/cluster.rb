@@ -31,10 +31,16 @@ class Fog::Hyperv::Compute
     def reload
       requires :id
 
-      data = service.get_cluster id: id, _return_fields: self.class.attributes
+      # Get-Cluster answers with a single object when one cluster matches and an
+      # array when more than one does, and the mock fixture is an array either way,
+      # so all three shapes have to be accepted. The entries are plain Hashes:
+      # unlike some other requests there is no model behind this one to ask for
+      # attributes off, which is what reading data.attributes used to do.
+      data = [service.get_cluster(id: id, _return_fields: self.class.attributes)].flatten.compact
+      data = data.find { |cluster| cluster[:id] == id } || data.first
       return unless data
 
-      merge_attributes(data.attributes)
+      merge_attributes(data)
     end
 
     private

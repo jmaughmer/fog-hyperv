@@ -39,4 +39,15 @@ class UnitClusterTest < Minitest::Test
     assert_kind_of Fog::Hyperv::Compute::Host, hosts.first
     assert_equal 'MOCK-HOST', hosts.first.name
   end
+
+  # Cluster#reload asks for the cluster by id and only the model's own fields. It
+  # used to read data.attributes off what Get-Cluster returns, which is a Hash (or
+  # an array), not a model, so the call could not have worked against a real host
+  # either
+  def test_reloads_a_cluster
+    cluster = @client.clusters.first
+
+    assert_equal 'mock-cluster', cluster.reload.name
+    assert_equal 'becc0c8a-6444-4df5-bcd8-585ebab46518', cluster.reload.id
+  end
 end
