@@ -16,6 +16,8 @@ module Fog::Hyperv
     collection :clusters
     model :cluster_network
     collection :cluster_networks
+    model :cluster_node
+    collection :cluster_nodes
     model :cluster_shared_volume
     collection :cluster_shared_volumes
     model :cluster_virtual_machine_role

@@ -20,7 +20,11 @@ class Fog::Hyperv::Compute
     attribute :name, type: :string
 
     # @!attribute [r] hosts
-    #   @return [Array<Host>] the list of hosts in the cluster
+    #   @return [Array<Host>] the cluster's nodes as Hyper-V describes them — paths,
+    #     memory, switches, machines. Heavier than #nodes: this opens a WinRM shell on
+    #     every node, and a node that answers Get-ClusterNode but not WinRM takes the
+    #     whole listing down with it, which a caller that wants to report a down node
+    #     should go through #nodes for instead.
     def hosts
       return [] unless persisted?
 
@@ -37,6 +41,17 @@ class Fog::Hyperv::Compute
 
       requires :id
       service.cluster_virtual_machine_roles.all(id: id)
+    end
+
+    # @!attribute [r] nodes
+    #   @return [Array<ClusterNode>] the cluster's nodes as the cluster sees them,
+    #     which includes the ones that are down and so answer nothing to Get-VMHost.
+    #     Cheap next to #hosts, which opens a WinRM shell per node.
+    def nodes
+      return [] unless persisted?
+
+      requires :id
+      service.cluster_nodes.all(id: id)
     end
 
     # @!attribute [r] networks

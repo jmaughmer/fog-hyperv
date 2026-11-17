@@ -426,6 +426,47 @@ class Fog::Hyperv::Compute
       )
     end
 
+    # @!attribute [r] cluster_role
+    #   @return [ClusterVirtualMachineRole,nil] the clustered role this machine runs
+    #     as, or nil when it is not highly available — which includes a machine on a
+    #     stand-alone host, where there is no cluster to ask. Memoised, including the
+    #     nil, because on a stand-alone host the answer costs one WMI query to find
+    #     out and every later call is free.
+    def cluster_role
+      return @cluster_role if instance_variable_defined?(:@cluster_role)
+
+      @cluster_role =
+        if service.respond_to?(:supports_clusters?) && !service.supports_clusters?
+          nil
+        else
+          begin
+            service.cluster_virtual_machine_roles.get("Virtual Machine #{name}")
+          rescue Fog::Errors::NotFound, Fog::Hyperv::Errors::PSError
+            # NotFound is a machine on clustered hardware that was never made
+            # highly available; PSError covers a node without the cluster cmdlets,
+            # which says the same thing in the only way it can.
+            nil
+          end
+        end
+    end
+
+    # @!attribute [r] clustered?
+    #   @return [Boolean] whether this machine fails over with the cluster
+    def clustered?
+      !cluster_role.nil?
+    end
+
+    # @!attribute [r] owner_node
+    #   @return [String] the node running this machine now. computer_name is the node
+    #     the machine was read from, and that goes stale the moment a role moves: the
+    #     machine is still the same GUID, it is just somewhere else. Anything that
+    #     acts on the machine by pointing at a node — every run_cmd in this gem does,
+    #     reload included — wants this rather than computer_name once a cluster is in
+    #     play.
+    def owner_node
+      cluster_role&.owner_node || computer_name
+    end
+
     # Reload the VM attributes from the Hyper-V server
     # @return [self] if model successfully reloaded
     # @return [nil] if something went wrong or the model was not found

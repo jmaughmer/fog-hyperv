@@ -107,6 +107,27 @@ class UnitClusterTest < Minitest::Test
     end
   end
 
+  # The cluster's own view of its nodes: state and votes, one call for all of them,
+  # and it does not need WinRM on the node to answer.
+  def test_lists_the_cluster_nodes
+    nodes = @client.clusters.first.nodes
+
+    assert_equal ['mock-host', 'mock-node2'], nodes.map(&:name)
+    assert(nodes.all? { |n| n.is_a? Fog::Hyperv::Compute::ClusterNode })
+    assert_equal [0, 0], nodes.map(&:state)
+    assert_equal ['00000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000002'],
+                 nodes.map(&:node_instance_id)
+    assert_equal 9600, nodes.first.build_number
+    assert_equal 'MOCK-NODE2', nodes.last.host.name
+  end
+
+  # Node names come back in whatever case the cluster holds, and Windows does not
+  # distinguish them
+  def test_a_cluster_node_can_be_asked_for_in_any_case
+    assert_equal 'mock-host', @client.cluster_nodes.get('MOCK-HOST').name
+    assert_raises(Fog::Errors::NotFound) { @client.cluster_nodes.get('MOCK-NODE3') }
+  end
+
   # The cluster's own networks are not the switches a machine connects to, but a
   # validation report says so with them: a node with no cluster network cannot take
   # part in a failover.
@@ -136,6 +157,7 @@ class UnitClusterTest < Minitest::Test
     absent = Fog::Hyperv::Compute::Cluster.new(service: @client)
 
     assert_empty absent.networks
+    assert_empty absent.nodes
     assert_empty absent.roles
     assert_empty absent.shared_volumes
     assert_empty absent.available_disks
