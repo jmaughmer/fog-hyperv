@@ -1,0 +1,1 @@
+[{"Number":3,"Path":"\\\\.\\Disk3","RawDiskSize":536870912000,"Size":536858030080,"PartitionNumber":0,"FriendlyVolumeName":null,"BusType":2,"UniqueId":"60014056xxxxxxxxxxxxxx","IsClustered":false,"CanShare":true,"IsPersistentReservationsEnabled":true,"Cluster":{"Domain":"example.com","Name":"mock-cluster","Id":"becc0c8a-6444-4df5-bcd8-585ebab46518"}}]

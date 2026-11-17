@@ -27,6 +27,30 @@ class Fog::Hyperv::Compute
       cluster_nodes.map { |n| service.hosts.get(n[:name]) }
     end
 
+    # @!attribute [r] shared_volumes
+    #   @return [Array<ClusterSharedVolume>] the Cluster Shared Volumes of this
+    #     cluster, which is where the disks of its virtual machines have to live.
+    #     Nothing to ask here on a stand-alone host: no cluster, no CSVs.
+    def shared_volumes
+      return [] unless persisted?
+
+      requires :id
+      service.cluster_shared_volumes.all(id: id)
+    end
+
+    # @!attribute [r] available_disks
+    #   @return [Array<Hash>] the disks the cluster can see that no cluster role owns
+    #     yet, the pool a new shared volume would be built from. Plain hashes rather
+    #     than models: a free disk has no identity anyone acts on, only a number, a
+    #     size and a path, and it stops being one the moment it is added to the
+    #     cluster.
+    def available_disks
+      return [] unless persisted?
+
+      requires :id
+      [service.get_cluster_available_disk(id: id)].flatten.compact
+    end
+
     # Reload the cluster information from Hyper-V
     def reload
       requires :id

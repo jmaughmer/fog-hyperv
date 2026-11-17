@@ -69,6 +69,34 @@ class UnitClusterTest < Minitest::Test
     assert_equal 'becc0c8a-6444-4df5-bcd8-585ebab46518', cluster.reload.id
   end
 
+  # The Cluster Shared Volumes are what a placement decision picks from, so the path
+  # from the fixture to a model with its volume path has to hold.
+  def test_lists_the_cluster_shared_volumes
+    volumes = @client.clusters.first.shared_volumes
+
+    assert_equal ['Cluster Volume1', 'Cluster Volume2'], volumes.map(&:name)
+    assert(volumes.all? { |v| v.is_a? Fog::Hyperv::Compute::ClusterSharedVolume })
+    assert_equal 'C:\\ClusterStorage\\Volume1', volumes.first.volume_path
+    assert_equal 'mock-node2', volumes.last.owner_node
+    assert_equal 1_073_741_824_000, volumes.first.shared_volume[:size]
+  end
+
+  def test_a_shared_volume_can_be_asked_for_by_name
+    assert_equal 'Cluster Volume2', @client.cluster_shared_volumes.get('Cluster Volume2').name
+    assert_raises(Fog::Errors::NotFound) { @client.cluster_shared_volumes.get('Cluster Volume3') }
+  end
+
+  # Free disks are reported as the raw hashes the cmdlet answers with: a caller shows
+  # them, it never acts on one.
+  def test_reports_the_disks_that_are_not_in_a_volume_yet
+    disks = @client.clusters.first.available_disks
+
+    assert_equal 1, disks.count
+    assert_equal 3, disks.first[:number]
+    assert_equal 536_870_912_000, disks.first[:raw_disk_size]
+    assert_nil disks.first[:friendly_volume_name]
+  end
+
   def test_a_cluster_that_is_not_there_anymore_does_not_reload
     cluster = Fog::Hyperv::Compute::Cluster.new(service: @client, id: '00000000-0000-0000-0000-000000000000')
 
