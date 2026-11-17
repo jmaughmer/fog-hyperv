@@ -8,6 +8,8 @@ module Fog::Hyperv
                :hyperv_transport, :hyperv_realm,
                :hyperv_ssl_verify, :hyperv_ca_trust_path,
                :hyperv_client_cert, :hyperv_client_key, :hyperv_key_pass,
+               :hyperv_operation_timeout, :hyperv_receive_timeout,
+               :hyperv_retry_limit, :hyperv_retry_delay,
                :hyperv_debug
 
     secrets :hyperv_password, :hyperv_key_pass, :connection
@@ -200,6 +202,20 @@ module Fog::Hyperv
         end
         @hyperv_transport = transport || (@hyperv_realm ? :kerberos : (@hyperv_client_cert ? :ssl : :negotiate))
 
+        # Everything past authentication is a conversation on the wire: opening a
+        # shell waits on a reply, a running command is collected in long-poll
+        # receives, and a shell that fails to open is tried again on a schedule.
+        # The winrm gem answers for a local network with those waits — 60 seconds
+        # to an operation, 70 to a receive, three retries ten seconds apart — and
+        # a path with hundreds of milliseconds of latency and real loss in it has
+        # no way to say so short of patching the gem. Unset leaves the gem's own
+        # answer; the gem also enforces that a receive outlives its operation and
+        # raises rather than silently cutting commands short.
+        @hyperv_operation_timeout = integer_option(options, :hyperv_operation_timeout)
+        @hyperv_receive_timeout = integer_option(options, :hyperv_receive_timeout)
+        @hyperv_retry_limit = integer_option(options, :hyperv_retry_limit)
+        @hyperv_retry_delay = integer_option(options, :hyperv_retry_delay)
+
         # Hide NEGOTIATE logging from WinRM to reduce log spam when debugging
         Logging.logger['WinRM::HTTP::HttpNegotiate'].level = :error
 
@@ -239,6 +255,20 @@ module Fog::Hyperv
       rescue StandardError => e
         logger.debug "Cluster support checking failed with #{e.class}: #{e.message}"
         false
+      end
+
+      private
+
+      # A form or a configuration file hands numbers over as strings, and the
+      # gem wants Integers and raises on anything else, so the answer says which
+      # option was wrong rather than quoting Ruby at the caller.
+      def integer_option(options, key)
+        value = options[key]
+        return if value.nil? || (value.respond_to?(:empty?) && value.empty?)
+
+        Integer(value)
+      rescue ArgumentError, TypeError
+        raise ArgumentError, "#{key} must be a whole number, not #{value.inspect}"
       end
     end
 

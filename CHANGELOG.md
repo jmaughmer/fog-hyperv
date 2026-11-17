@@ -1,5 +1,11 @@
 ## Unreleased
 
+- Recognise hyperv_operation_timeout, hyperv_receive_timeout,
+  hyperv_retry_limit and hyperv_retry_delay and pass them to the WinRM
+  connection: the gem's waits describe a local network, and a high-latency or
+  lossy path could not say otherwise without patching the gem. Unset keeps the
+  gem's own numbers, and a value that is not a number says which option was
+  wrong
 - Ask a newly connected host its short name and its fully qualified one in one
   shell call rather than two: each was a command and a receive on the wire, and
   both read the same $env:computerName, so every first contact with an endpoint

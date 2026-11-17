@@ -202,6 +202,53 @@ class UnitConnectionTest < Minitest::Test
     assert_equal 'https://hyperv.example:5986/wsman', opts[:endpoint]
   end
 
+  # ------------------------------------------------------------- timeouts and retries
+  #
+  # The winrm gem's waits describe a local network: a 60 second operation, a
+  # 70 second receive, three shell-open retries ten seconds apart. A path with
+  # hundreds of milliseconds of latency and real loss in it may exceed those
+  # legitimately, and until now the only lever was patching the gem.
+
+  def test_the_timeouts_and_retries_pass_through
+    opts = opts_for 'http://hyperv.example:5985/wsman',
+                    hyperv_operation_timeout: 30,
+                    hyperv_receive_timeout: 90,
+                    hyperv_retry_limit: 5,
+                    hyperv_retry_delay: 2
+
+    assert_equal 30, opts[:operation_timeout]
+    assert_equal 90, opts[:receive_timeout]
+    assert_equal 5, opts[:retry_limit]
+    assert_equal 2, opts[:retry_delay]
+  end
+
+  # Forms and YAML hand numbers over as strings; the gem takes Integers only
+  def test_the_numbers_survive_being_strings
+    opts = opts_for 'http://hyperv.example:5985/wsman',
+                    hyperv_operation_timeout: '30',
+                    hyperv_retry_delay: '2'
+
+    assert_equal 30, opts[:operation_timeout]
+    assert_equal 2, opts[:retry_delay]
+  end
+
+  # Unset is a decision, not an oversight: the gem's own numbers have to stay
+  # in place for everyone who did not ask
+  def test_an_unset_number_leaves_the_gem_default_alone
+    opts = opts_for 'http://hyperv.example:5985/wsman'
+
+    %i[operation_timeout receive_timeout retry_limit retry_delay].each do |key|
+      refute opts.key?(key), "#{key} must be absent unless asked for"
+    end
+  end
+
+  def test_a_number_that_is_not_a_number_names_the_option
+    error = assert_raises(ArgumentError) do
+      opts_for('http://hyperv.example:5985/wsman', hyperv_operation_timeout: 'soon')
+    end
+    assert_includes error.message, 'hyperv_operation_timeout'
+  end
+
   # ---------------------------------------------------------------- discovery
   #
   # A brand new connection asked the machine its own name and its DNS name in

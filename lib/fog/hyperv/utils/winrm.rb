@@ -247,6 +247,12 @@ module Fog::Hyperv::Utils::Winrm
       opts[:key_pass] = @hyperv_key_pass if @hyperv_key_pass
     end
 
+    # Absent is the gem's own default; these are only said when asked for.
+    opts[:operation_timeout] = @hyperv_operation_timeout if @hyperv_operation_timeout
+    opts[:receive_timeout] = @hyperv_receive_timeout if @hyperv_receive_timeout
+    opts[:retry_limit] = @hyperv_retry_limit if @hyperv_retry_limit
+    opts[:retry_delay] = @hyperv_retry_delay if @hyperv_retry_delay
+
     opts
   end
 

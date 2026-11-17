@@ -86,6 +86,25 @@ compute = Fog::Compute.new(
 )
 ```
 
+## Timeouts and retries
+
+WinRM is a conversation on the wire twice over: opening a shell waits on a
+reply, and a running command is collected in long-poll receives that hold the
+connection until the command answers. The winrm gem's waits describe a local
+network — 60 seconds to an operation, 70 to a receive, three shell-open retries
+ten seconds apart — and a path with hundreds of milliseconds of latency and
+real loss on it can exceed those legitimately. `hyperv_operation_timeout` and
+`hyperv_receive_timeout` (seconds) set the waits, `hyperv_retry_limit` and
+`hyperv_retry_delay` the retries of a shell that would not open; leaving one
+out keeps the gem's number. The gem raises if a receive timeout is given below
+its operation timeout rather than silently truncating commands.
+
+A satellite site worth naming: on an 800 ms link a single fog call is six or
+seven round trips deep — shell open, command, receives, cleanup — so retries
+of ten seconds are better asked about than inherited, and the transports that
+skip the NTLM handshake (above) save their own two or three seconds per
+connection on such a path.
+
 ## Failover clusters
 
 A cluster is managed through its nodes, so **point `hyperv_endpoint`/`hyperv_host` at
