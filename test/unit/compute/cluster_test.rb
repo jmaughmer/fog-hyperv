@@ -48,13 +48,14 @@ class UnitClusterTest < Minitest::Test
 
   # Cluster#hosts goes through Get-ClusterNode and then resolves every node name it
   # gets back as a host, which is why it is worth a test of its own: the cluster
-  # model is only useful to Foreman if the nodes come out as Host models.
+  # model is only useful to Foreman if the nodes come out as Host models, and there
+  # has to be more than one of them to prove it maps rather than picks.
   def test_maps_cluster_nodes_onto_hosts
     hosts = @client.clusters.first.hosts
 
-    assert_equal 1, hosts.count
-    assert_kind_of Fog::Hyperv::Compute::Host, hosts.first
-    assert_equal 'MOCK-HOST', hosts.first.name
+    assert_equal 2, hosts.count
+    assert(hosts.all? { |h| h.is_a? Fog::Hyperv::Compute::Host })
+    assert_equal ['MOCK-HOST', 'MOCK-NODE2'], hosts.map(&:name)
   end
 
   # Cluster#reload asks for the cluster by id and only the model's own fields. It

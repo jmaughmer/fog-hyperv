@@ -42,4 +42,16 @@ class UnitMockTest < Minitest::Test
       @client.this_request_does_not_exist
     end
   end
+
+  # Get-VMHost has no name filter: -ComputerName says which machine the call runs
+  # against, and that machine answers with itself. A cluster asking after each of its
+  # nodes in turn depends on that, or a two-node cluster reads as one host twice.
+  def test_a_host_asked_about_by_name_answers_for_that_machine_only
+    assert_equal ['MOCK-HOST', 'MOCK-NODE2'], @client.hosts.all.map(&:name)
+    assert_equal 'MOCK-NODE2', @client.hosts.get('MOCK-NODE2').name
+    assert_equal 'MOCK-NODE2', @client.hosts.get('mock-node2').name
+    assert_equal 'C:\\ClusterStorage\\Volume1\\VirtualHardDisks',
+                 @client.hosts.get('MOCK-NODE2').virtual_hard_disk_path
+    assert_raises(Fog::Errors::NotFound) { @client.hosts.get('MOCK-NODE3') }
+  end
 end
