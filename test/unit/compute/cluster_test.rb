@@ -107,6 +107,32 @@ class UnitClusterTest < Minitest::Test
     end
   end
 
+  # The plugin holds a machine's GUID and needs the node it runs on, so the id filter
+  # is the lookup that matters. It reads through a ClusterGroup field a real cluster
+  # is reported to carry without documenting it, which is why the fixture says so too.
+  def test_a_role_can_be_asked_for_by_the_machines_id
+    role = @client.clusters.first.roles.detect do |r|
+      r.virtual_machine_id == '20ff7fe3-fd54-425c-aa97-fbf3c2e7a868'
+    end
+
+    assert_equal 'mock-node2', role&.owner_node
+
+    by_id = @client.get_cluster_virtual_machine_role(vm_id: '416E49FD-28DD-413C-9743-AA3E69E4807D')
+
+    assert_equal ['Virtual Machine mockvm1'], [by_id].flatten.map { |r| r[:name] }
+    assert_empty @client.get_cluster_virtual_machine_role(vm_id: '00000000-0000-0000-0000-000000000000')
+  end
+
+  # Making a machine highly available, and taking that away again, are the two calls
+  # the plugin's create and destroy paths are built around: they take the machine by
+  # id and run against the node that owns it.
+  def test_a_machine_can_be_made_highly_available_and_taken_back_out
+    assert_equal true, @client.add_cluster_virtual_machine_role(id: '416e49fd-28dd-413c-9743-aa3e69e4807d',
+                                                                computer_name: 'MOCK-HOST')
+    assert_equal true, @client.remove_cluster_virtual_machine_role(id: '416e49fd-28dd-413c-9743-aa3e69e4807d',
+                                                                   computer_name: 'MOCK-HOST')
+  end
+
   # The cluster's own view of its nodes: state and votes, one call for all of them,
   # and it does not need WinRM on the node to answer.
   def test_lists_the_cluster_nodes

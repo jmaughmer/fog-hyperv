@@ -24,11 +24,14 @@ class Fog::Hyperv::Compute
   class Mock
     def get_cluster_virtual_machine_role(**args)
       data = handle_mock_response(**args)
-      # -VMId is filtered by the cmdlet on the host, and a role object does not carry
-      # the id of the machine it was made for — that is why the cmdlet takes the
-      # parameter at all. The mock cannot follow a GUID to a role, so it answers name
-      # lookups only, which is the other way round: Hyper-V names a machine's role
-      # "Virtual Machine <vm name>".
+      # -VMId is filtered by the cmdlet on the host, so the mock has to filter too.
+      # It reads the fixture's virtual_machine_id, which a real ClusterGroup is
+      # reported to carry but does not document: if the lab capture finds the field
+      # missing or named otherwise, this filter and that fixture entry are what the
+      # re-capture has to fix, and Get-ClusterGroup -VMId is the fallback for the
+      # real request. Name lookups are the other way round: Hyper-V names a
+      # machine's role "Virtual Machine <vm name>".
+      data = data.select { |role| role[:virtual_machine_id].to_s.casecmp(args[:vm_id].to_s).zero? } if args[:vm_id]
       data = data.select { |role| role[:name].casecmp(args[:name].to_s).zero? } if args[:name]
       data
     end

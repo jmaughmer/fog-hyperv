@@ -24,6 +24,12 @@ class Fog::Hyperv::Compute
     #   @return [String] "VirtualMachine" for a role this model describes, and
     #     something else for the cluster's own groups
     attribute :group_type
+    # @!attribute [r] virtual_machine_id
+    #   @return [String] the GUID of the machine this role was made for. ClusterGroup
+    #     is reported to carry it and it is what lets a caller holding only a VM GUID
+    #     find its role — but it is not on the cmdlet's documented property list, so
+    #     the lab has to confirm the name before anything relies on the value.
+    attribute :virtual_machine_id
     # @!attribute [r] priority
     #   @return [Integer] the order roles fail over in when several move at once
     attribute :priority, type: :integer

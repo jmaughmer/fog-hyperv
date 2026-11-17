@@ -47,6 +47,7 @@ module Fog::Hyperv
     collection :vhds
 
     request_path 'fog/hyperv/compute/requests'
+    request :add_cluster_virtual_machine_role
     request :add_vm_dvd_drive
     request :add_vm_hard_disk_drive
     request :add_vm_network_adapter
@@ -85,6 +86,7 @@ module Fog::Hyperv
     request :new_vm
     request :new_vm_switch
     request :optimize_vhd
+    request :remove_cluster_virtual_machine_role
     request :remove_item
     request :remove_vm
     request :remove_vm_dvd_drive
