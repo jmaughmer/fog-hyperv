@@ -1,3 +1,11 @@
+## Unreleased
+
+- Read a hard drive's VHD from the machine's one shared listing instead of
+  with a Get-VHD of its own: a listing that touched every drive's details paid
+  a round trip per drive, and one lazy load answers the whole machine. A disk
+  the listing does not name, or a machine whose listing fails outright, still
+  gets the single read, and a miss is still NotFound
+
 ## v0.2.2 2026-11-16
 
 - Fix valid? and supports_clusters? always returning false for remote hosts,
