@@ -176,11 +176,10 @@ module Fog::Hyperv::Utils::Winrm
     if %w[. localhost].include? host
       endpoint = @hyperv_endpoint
     else
-      # TODO: Support non-standard endpoints for additional hosts
       unless host.include? '.'
         host = run_cmd("[System.Net.Dns]::GetHostByName(#{host.inspect})", _return_fields: :host_name, _ps_version: 1)[:host_name]
       end
-      endpoint = "http://#{host}:5985/wsman"
+      endpoint = endpoint_for(host)
     end
 
     existing = @connections.find do |_, c_connection|
@@ -193,6 +192,27 @@ module Fog::Hyperv::Utils::Winrm
     end
 
     connect(endpoint)
+  end
+
+  # Builds the WinRM endpoint another machine answers on: the configured endpoint's
+  # scheme, port and path with its host replaced by this one.
+  #
+  # Every request carries a target computer, so a cluster's other nodes are spoken to
+  # over WinRM as well, and they answer the same way the configured node does.
+  # Deriving the value rather than assuming http on 5985 is what makes a cluster that
+  # runs WinRM over HTTPS on 5986 manageable at all: the assumption sends a plain HTTP
+  # request to a port nothing is listening on there.
+  #
+  # @param host [String] the machine to point the endpoint at
+  # @return [String] a WinRM endpoint for that machine
+  def endpoint_for(host)
+    return "http://#{host}:5985/wsman" if @hyperv_endpoint.nil?
+
+    configured = URI.parse(@hyperv_endpoint)
+    # URI#port answers the scheme's default when the configured endpoint left it out,
+    # which is the port any other WinRM listener answers on too; the scheme and the
+    # path (/wsman for every listener) carry over as they were.
+    "#{configured.scheme}://#{host}:#{configured.port}#{configured.path}"
   end
 
   def connect(endpoint = nil)
