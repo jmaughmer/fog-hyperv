@@ -2,11 +2,12 @@
 
 require 'test_helper'
 
-# Nothing had ever exercised the cluster read path under Fog.mock!: get_cluster has
-# no Mock of its own, so it is served by Fog::Hyperv::Compute::Mock#method_missing,
-# which answers any registered request that has a mock_files/<name>.json. These
-# tests say which parts of that path hold and which do not, which is what the
-# failover-cluster work starts from.
+# The cluster read path had never run under Fog.mock!: Get-Cluster has no Mock of
+# its own, so it is served by Fog::Hyperv::Compute::Mock#method_missing, which
+# answers any registered request that has a mock_files/<name>.json. Writing these
+# tests found three things that did not work — the mocked-request path itself,
+# Cluster#reload, and the absence of any id or name filtering — and this is the file
+# that keeps all of them fixed.
 class UnitClusterTest < Minitest::Test
   def setup
     Fog.mock!
@@ -29,6 +30,12 @@ class UnitClusterTest < Minitest::Test
     assert_equal 'mock-cluster', @client.clusters.get('mock-cluster').name
   end
 
+  # Clusters#get tells a GUID from a name and asks for it as _by_id, which the real
+  # request filters on the host itself
+  def test_gets_a_cluster_by_id
+    assert_equal 'mock-cluster', @client.clusters.get('becc0c8a-6444-4df5-bcd8-585ebab46518').name
+  end
+
   # Cluster#hosts goes through Get-ClusterNode and then resolves every node name it
   # gets back as a host, which is why it is worth a test of its own: the cluster
   # model is only useful to Foreman if the nodes come out as Host models.
@@ -49,5 +56,11 @@ class UnitClusterTest < Minitest::Test
 
     assert_equal 'mock-cluster', cluster.reload.name
     assert_equal 'becc0c8a-6444-4df5-bcd8-585ebab46518', cluster.reload.id
+  end
+
+  def test_a_cluster_that_is_not_there_anymore_does_not_reload
+    cluster = Fog::Hyperv::Compute::Cluster.new(service: @client, id: '00000000-0000-0000-0000-000000000000')
+
+    assert_nil cluster.reload
   end
 end
