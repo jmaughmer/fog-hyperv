@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Run the shell settings as part of the first command instead of as a call of
+  their own: every shell.run is a command and a receive on the wire, so the
+  separate settings call was a full round trip paid before every single thing
+  asked of a host
 - Recognise hyperv_ssl_verify, hyperv_ca_trust_path, hyperv_client_cert,
   hyperv_client_key and hyperv_key_pass, and give hyperv_transport the
   transport that authenticates by certificate to speak

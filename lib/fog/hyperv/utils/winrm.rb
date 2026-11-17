@@ -7,6 +7,21 @@ module Fog::Hyperv::Utils::Winrm
   # Struct emulating a WinRM shell return
   LocalExecOutput = Struct.new(:stdout, :stderr, :exitcode)
 
+  # The settings every command runs under: no confirmation questions, abort early
+  # on errors, and no progress rendering. A cmdlet that renders a progress bar
+  # (Get-FileHash, Invoke-WebRequest, Copy-Item of anything large) writes that
+  # rendering into the response when it is run over a shell rather than a console,
+  # and the control characters in it make the reply impossible to parse: the call
+  # comes back as a WinRM transport error quoting an illegal character, with none
+  # of the streams and no exit code to read. Nothing asked of Hyper-V over WinRM
+  # has a use for a progress bar.
+  SHELL_SETTINGS = [
+    "$ConfirmPreference = 'None'",
+    "$ErrorActionPreference = 'Stop'",
+    '$PSNativeCommandUseErrorActionPreference = $true',
+    "$ProgressPreference = 'SilentlyContinue'"
+  ].join('; ').freeze
+
   # Check if the PowerShell version is newer than the value specified
   # @param version [String] a semver version to check if powershell matches
   # @returns [Boolean] is the running PowerShell newer than the given version
@@ -45,31 +60,22 @@ module Fog::Hyperv::Utils::Winrm
     out = nil
     target_computer.each do |computer|
       connection(computer).shell(:powershell) do |shell|
-        # Avoid confirmation questions, abort early on errors
-        setup = [
-          "$ConfirmPreference = 'None'",
-          "$ErrorActionPreference = 'Stop'",
-          '$PSNativeCommandUseErrorActionPreference = $true',
-          # A cmdlet that renders a progress bar (Get-FileHash, Invoke-WebRequest,
-          # Copy-Item of anything large) writes that rendering into the response
-          # when it is run over a shell rather than a console, and the control
-          # characters in it make the reply impossible to parse: the call comes
-          # back as a WinRM transport error quoting an illegal character, with
-          # none of the streams and no exit code to read. Nothing asked of
-          # Hyper-V over WinRM has a use for a progress bar.
-          "$ProgressPreference = 'SilentlyContinue'"
-        ].join('; ')
-        shell.run setup
-
         pscalls = commands.map.with_index do |(command, args), idx|
           last = idx == commands.size - 1
           build_pscall(command, _to_json: last && !skip_json, _json_depth: json_depth, **args)
         end
         pscalls = [pscalls.join("\n")] unless separate_calls
 
-        pscalls.each do |cmd|
+        pscalls.each_with_index do |cmd, idx|
           Fog::Logger.debug "PS; >>> \"#{cmd.split("\n").join("\n\t")}\""
-          out = shell.run cmd
+
+          # The settings ride along inside the first run rather than getting a run
+          # of their own: ruby-winrm charges a command and a receive for every
+          # shell.run, so on a high-latency path the separate setup call was a
+          # second of wire per call before anything was asked. The settings are
+          # assignments, they print nothing, and the shell keeps them between runs
+          # the way the separate call left them for every run that followed.
+          out = shell.run(idx.zero? ? "#{SHELL_SETTINGS}; #{cmd}" : cmd)
           Fog::Logger.debug "PS; <<< OUT=[#{out.stdout.inspect}] ERR=[#{out.stderr.inspect}] EXIT=[#{out.exitcode}]"
 
           is_success = true
