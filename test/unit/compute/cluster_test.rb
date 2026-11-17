@@ -206,4 +206,29 @@ class UnitClusterTest < Minitest::Test
 
     assert_nil cluster.reload
   end
+
+  # --------------------------------------------------------------- capability probes
+
+  # A consumer decides whether to ask about clusters from this one call, so the
+  # question has to be answerable by a mocked client too. Until Mock grew its own
+  # probes the answer was NoMethodError behind a respond_to? gate, which sent every
+  # consumer's cluster path down the stand-alone branch in a mocked test.
+  def test_a_mocked_client_says_it_belongs_to_a_cluster
+    assert_predicate @client, :supports_clusters?
+  end
+
+  def test_a_mocked_client_says_it_manages_hyper_v
+    assert_predicate @client, :valid?
+  end
+
+  # A probe with nothing to read says no, as the real probes do when WMI refuses: a
+  # capability question never raises at a caller that asked it politely
+  def test_a_capability_probe_with_no_data_answers_false
+    @client.define_singleton_method(:handle_mock_response) do |*_args, **_opts|
+      raise Fog::Errors::MockNotImplemented, 'no mocked data'
+    end
+
+    refute_predicate @client, :supports_clusters?
+    refute_predicate @client, :valid?
+  end
 end

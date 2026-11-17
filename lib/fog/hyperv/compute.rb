@@ -220,6 +220,34 @@ module Fog::Hyperv
         require 'fog/json'
       end
 
+      # The two capability questions live on Real because they ask a machine: #valid?
+      # reads Msvm_ComputerSystem over WMI and #supports_clusters? asks
+      # root/mscluster. A mocked client has no machine to ask, so it answered neither —
+      # not false, but no method at all — and a consumer that gates on
+      # respond_to?(:supports_clusters?) sent every mocked cluster down its
+      # stand-alone path. The cluster models were then testable while the code that
+      # decides whether to use them was not. Under a mock the honest equivalent of a
+      # probe is the fixture the request would have been served from, so that is what
+      # these read.
+      #
+      # @return [Boolean] would this host answer a management call
+      def valid?
+        !handle_mock_response(_method: 'get_vm_host').empty?
+      rescue StandardError
+        false
+      end
+
+      # True for every mocked client, because the mock dataset describes a clustered
+      # host. A consumer that needs the stand-alone answer can not get it from these
+      # fixtures; it has to say so itself.
+      #
+      # @return [Boolean] is this host joined to a failover cluster
+      def supports_clusters?
+        !handle_mock_response(_method: 'get_cluster').empty?
+      rescue StandardError
+        false
+      end
+
       def method_missing(method, *args)
         if requests.find { |_, k| k == method }
           # handle_mock_response takes keyword arguments, and a request's arguments
