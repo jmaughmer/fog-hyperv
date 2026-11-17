@@ -1,3 +1,20 @@
+## Unreleased
+
+- Recognise hyperv_ssl_verify, hyperv_ca_trust_path, hyperv_client_cert,
+  hyperv_client_key and hyperv_key_pass, and give hyperv_transport the
+  transport that authenticates by certificate to speak
+- Verify the TLS peer of an https endpoint by default, which the connection
+  used to switch off unconditionally. This changes behaviour for an https
+  endpoint with a certificate the trust store does not answer for: it fails
+  instead of connecting, and wants hyperv_ca_trust_path pointing at the CA
+  that issued it or hyperv_ssl_verify: false to say otherwise. Encryption
+  that never says who is at the other end is not protection on a routed path
+- Default the transport to kerberos when a realm is given and to ssl when a
+  client certificate is given, before falling back to negotiate: ruby-winrm's
+  negotiate always wraps NTLM tokens and NTLM is deprecated by its vendor
+  with disabling it the stated end state, so the transports that do not speak
+  it should not need to be asked for by name
+
 ## v0.2.2 2026-11-16
 
 - Fix valid? and supports_clusters? always returning false for remote hosts,
