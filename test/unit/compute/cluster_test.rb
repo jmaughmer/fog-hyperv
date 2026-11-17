@@ -107,6 +107,41 @@ class UnitClusterTest < Minitest::Test
     end
   end
 
+  # The cluster's own networks are not the switches a machine connects to, but a
+  # validation report says so with them: a node with no cluster network cannot take
+  # part in a failover.
+  def test_lists_the_cluster_networks
+    networks = @client.clusters.first.networks
+
+    assert_equal ['Cluster Network 1', 'Cluster Network 2'], networks.map(&:name)
+    assert(networks.all? { |n| n.is_a? Fog::Hyperv::Compute::ClusterNetwork })
+    assert_equal ['mock-host', 'mock-node2'], networks.first.nodes
+    assert_equal '10.10.10.0', networks.first.infrastructure_address
+    assert_equal 100, @client.cluster_networks.get('Cluster Network 2').metric
+  end
+
+  # Quorum is one thing per cluster and nothing about it is addressable, so it comes
+  # back as the hash the cmdlet gives. The numbers are the cmdlet's own: what they
+  # mean is a lab capture, not something to branch on yet.
+  def test_reports_the_quorum
+    quorum = @client.clusters.first.quorum
+
+    assert_equal 0, quorum[:quorum_type]
+    assert_nil quorum[:quorum_resource]
+    assert_equal 'mock-cluster', quorum[:cluster][:name]
+  end
+
+  # A cluster that is not there has nothing to report, and must not raise on the way
+  def test_a_cluster_that_is_not_there_has_nothing_to_report
+    absent = Fog::Hyperv::Compute::Cluster.new(service: @client)
+
+    assert_empty absent.networks
+    assert_empty absent.roles
+    assert_empty absent.shared_volumes
+    assert_empty absent.available_disks
+    assert_empty absent.quorum
+  end
+
   # Free disks are reported as the raw hashes the cmdlet answers with: a caller shows
   # them, it never acts on one.
   def test_reports_the_disks_that_are_not_in_a_volume_yet

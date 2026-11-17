@@ -14,6 +14,8 @@ module Fog::Hyperv
     model :bios
     model :cluster
     collection :clusters
+    model :cluster_network
+    collection :cluster_networks
     model :cluster_shared_volume
     collection :cluster_shared_volumes
     model :cluster_virtual_machine_role
@@ -54,7 +56,9 @@ module Fog::Hyperv
     request :enable_vm_tpm
     request :get_cluster
     request :get_cluster_available_disk
+    request :get_cluster_network
     request :get_cluster_node
+    request :get_cluster_quorum
     request :get_cluster_shared_volume
     request :get_cluster_virtual_machine_role
     request :get_vhd

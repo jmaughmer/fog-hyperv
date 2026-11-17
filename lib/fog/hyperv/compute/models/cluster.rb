@@ -39,6 +39,28 @@ class Fog::Hyperv::Compute
       service.cluster_virtual_machine_roles.all(id: id)
     end
 
+    # @!attribute [r] networks
+    #   @return [Array<ClusterNetwork>] the cluster's own networks: heartbeats, live
+    #     migration and the address clients reach the cluster through. Not the
+    #     switches a virtual machine connects to, which are Host#switches.
+    def networks
+      return [] unless persisted?
+
+      requires :id
+      service.cluster_networks.all(id: id)
+    end
+
+    # @!attribute [r] quorum
+    #   @return [Hash] how the cluster votes — its quorum type and the witness behind
+    #     it, as the cmdlet answers. A hash rather than a model because a cluster has
+    #     exactly one quorum and nothing about it is addressable.
+    def quorum
+      return {} unless persisted?
+
+      requires :id
+      [service.get_cluster_quorum(id: id)].flatten.compact.first.to_h
+    end
+
     # @!attribute [r] shared_volumes
     #   @return [Array<ClusterSharedVolume>] the Cluster Shared Volumes of this
     #     cluster, which is where the disks of its virtual machines have to live.
