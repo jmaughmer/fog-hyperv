@@ -27,6 +27,18 @@ class Fog::Hyperv::Compute
       cluster_nodes.map { |n| service.hosts.get(n[:name]) }
     end
 
+    # @!attribute [r] roles
+    #   @return [Array<ClusterVirtualMachineRole>] the virtual machines this cluster
+    #     runs as clustered roles, each with the node that owns it. A machine on a
+    #     clustered host that is not in this list runs on one node and nothing more:
+    #     it is manageable, it is just not highly available.
+    def roles
+      return [] unless persisted?
+
+      requires :id
+      service.cluster_virtual_machine_roles.all(id: id)
+    end
+
     # @!attribute [r] shared_volumes
     #   @return [Array<ClusterSharedVolume>] the Cluster Shared Volumes of this
     #     cluster, which is where the disks of its virtual machines have to live.

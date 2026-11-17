@@ -16,6 +16,8 @@ module Fog::Hyperv
     collection :clusters
     model :cluster_shared_volume
     collection :cluster_shared_volumes
+    model :cluster_virtual_machine_role
+    collection :cluster_virtual_machine_roles
     model :com_port
     collection :com_ports
     model :dvd_drive
@@ -54,6 +56,7 @@ module Fog::Hyperv
     request :get_cluster_available_disk
     request :get_cluster_node
     request :get_cluster_shared_volume
+    request :get_cluster_virtual_machine_role
     request :get_vhd
     request :get_vm
     request :get_vm_bios

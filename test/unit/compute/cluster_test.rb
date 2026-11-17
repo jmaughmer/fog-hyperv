@@ -86,6 +86,27 @@ class UnitClusterTest < Minitest::Test
     assert_raises(Fog::Errors::NotFound) { @client.cluster_shared_volumes.get('Cluster Volume3') }
   end
 
+  # The role list is how the plugin finds which node owns a machine, so it has to
+  # carry the owner per role and name the machine the way Hyper-V names the role.
+  def test_lists_the_clustered_virtual_machines_and_their_owners
+    roles = @client.clusters.first.roles
+
+    assert_equal ['Virtual Machine mockvm1', 'Virtual Machine mockvm2'], roles.map(&:name)
+    assert_equal ['mockvm1', 'mockvm2'], roles.map(&:vm_name)
+    assert_equal ['mock-host', 'mock-node2'], roles.map(&:owner_node)
+    assert(roles.all? { |r| r.is_a? Fog::Hyperv::Compute::ClusterVirtualMachineRole })
+    assert_equal 500, roles.last.priority
+  end
+
+  def test_a_role_can_be_asked_for_by_the_machines_name
+    role = @client.cluster_virtual_machine_roles.get('Virtual Machine mockvm2')
+
+    assert_equal 'mock-node2', role.owner_node
+    assert_raises(Fog::Errors::NotFound) do
+      @client.cluster_virtual_machine_roles.get('Virtual Machine mockvm3')
+    end
+  end
+
   # Free disks are reported as the raw hashes the cmdlet answers with: a caller shows
   # them, it never acts on one.
   def test_reports_the_disks_that_are_not_in_a_volume_yet
