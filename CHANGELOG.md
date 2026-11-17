@@ -1,5 +1,9 @@
 ## Unreleased
 
+- Run the shell settings as part of the first command instead of as a call of
+  their own: every shell.run is a command and a receive on the wire, so the
+  separate settings call was a full round trip paid before every single thing
+  asked of a host
 - Send the Kerberos connection its service principal: the gem builds it as
   "<service>/<host>@<realm>", refuses a kerberos connection that names none,
   and fog named none — a realm, which is all the Kerberos option has ever
