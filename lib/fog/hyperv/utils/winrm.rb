@@ -250,6 +250,25 @@ module Fog::Hyperv::Utils::Winrm
     opts
   end
 
+  # The names a machine answers to on the network: its own short name and the
+  # fully qualified one DNS gives it, read off the same $env:computerName and so
+  # asked for in one call - each shell.run is a command and a receive on the
+  # wire, and a connection that is brand new was paying for two of them before
+  # it could answer anything.
+  #
+  # @param fqdn [String] the host the connection was made to, to ask on
+  # @return [Array(String,nil)] the short name and the resolved one, either nil
+  #   when the machine reported nothing for it
+  def discover_host_names(fqdn)
+    names = run_cmd(
+      '"$($env:computerName); $([System.Net.Dns]::GetHostByName($env:computerName).Hostname)"',
+      _target_computer: fqdn,
+      _skip_json: true,
+      _ps_version: 1
+    ).stdout.to_s.lines.first.to_s.split(';', 2).map { |name| name.strip.downcase }.map { |name| name unless name.empty? }
+    names
+  end
+
   def connect(endpoint = nil)
     endpoint ||= @hyperv_endpoint
     fqdn = URI.parse(endpoint).host
@@ -265,15 +284,12 @@ module Fog::Hyperv::Utils::Winrm
 
     # Add the local host's names to the connection
     begin
-      hostname = run_cmd('$env:computerName', _target_computer: fqdn, _skip_json: true, _ps_version: 1).stdout.downcase.strip
-      @connections[hostname] ||= connection
-      fqdn = run_cmd(
-        '[System.Net.Dns]::GetHostByName(($env:computerName)).Hostname',
-        _target_computer: fqdn,
-        _skip_json: true,
-        _ps_version: 1
-      ).stdout.downcase.strip
-      @connections[fqdn] ||= connection
+      hostname, resolved = discover_host_names(fqdn)
+      @connections[hostname] ||= connection if hostname
+      if resolved
+        @connections[resolved] ||= connection
+        fqdn = resolved
+      end
     end
 
     if endpoint == @hyperv_endpoint
