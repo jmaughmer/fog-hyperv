@@ -10,6 +10,12 @@
   shell call rather than two: each was a command and a receive on the wire, and
   both read the same $env:computerName, so every first contact with an endpoint
   cost a round trip it did not need
+- Let a host that will not answer for its own names keep the connection:
+  GetHostByName throws on a machine whose name does not resolve and the shell's
+  Stop preference turns that into a raised error, which aborted a connect that
+  had already registered the endpoint under the name it was made to. The
+  discovery now says so in the debug log and the connection loses the extra
+  names and nothing else
 - Run the shell settings as part of the first command instead of as a call of
   their own: every shell.run is a command and a receive on the wire, so the
   separate settings call was a full round trip paid before every single thing

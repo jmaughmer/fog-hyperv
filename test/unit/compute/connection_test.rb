@@ -329,6 +329,23 @@ class UnitConnectionTest < Minitest::Test
     assert_nil fqdn
   end
 
+  # A machine whose own name does not resolve answers the question by throwing,
+  # and the shell's Stop preference turns that into a raised error. The names
+  # are an optimisation the connection does not need to stand, and the call was
+  # made after the endpoint's own name was registered, so a host that will not
+  # answer for itself loses the aliases and not the connection
+  def test_a_host_that_raises_over_its_names_yields_nothing
+    client, = discovery_client('')
+    client.define_singleton_method(:run_cmd) do |*_args, **_opts|
+      raise 'Get-HostByName : No such host is known.'
+    end
+
+    hostname, fqdn = client.send(:discover_host_names, 'hyperv-01')
+
+    assert_nil hostname
+    assert_nil fqdn
+  end
+
   private
 
   def opts_for(endpoint, options = {})

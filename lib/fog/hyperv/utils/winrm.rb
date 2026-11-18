@@ -271,7 +271,7 @@ module Fog::Hyperv::Utils::Winrm
   #
   # @param fqdn [String] the host the connection was made to, to ask on
   # @return [Array(String,nil)] the short name and the resolved one, either nil
-  #   when the machine reported nothing for it
+  #   when the machine reported nothing for it, or answered nothing at all
   def discover_host_names(fqdn)
     names = run_cmd(
       '"$($env:computerName); $([System.Net.Dns]::GetHostByName($env:computerName).Hostname)"',
@@ -280,6 +280,14 @@ module Fog::Hyperv::Utils::Winrm
       _ps_version: 1
     ).stdout.to_s.lines.first.to_s.split(';', 2).map { |name| name.strip.downcase }.map { |name| name unless name.empty? }
     names
+  rescue StandardError => e
+    # GetHostByName throws on a machine whose own name does not resolve, and the
+    # shell's Stop preference turns that into a raised PSError. The extra names
+    # are worth one call, not a refused connection: the connection is already
+    # registered under the endpoint's own name, so a host that will not answer
+    # for its names loses the aliases and nothing else
+    Fog::Logger.debug "host name discovery on #{fqdn} failed: #{e.message}"
+    [nil, nil]
   end
 
   def connect(endpoint = nil)
@@ -295,14 +303,13 @@ module Fog::Hyperv::Utils::Winrm
     connection.logger.level = :error
     @connections[fqdn] = connection
 
-    # Add the local host's names to the connection
-    begin
-      hostname, resolved = discover_host_names(fqdn)
-      @connections[hostname] ||= connection if hostname
-      if resolved
-        @connections[resolved] ||= connection
-        fqdn = resolved
-      end
+    # Add the local host's names to the connection; discovery answers nil for a
+    # host that will not answer, so the connection stands either way
+    hostname, resolved = discover_host_names(fqdn)
+    @connections[hostname] ||= connection if hostname
+    if resolved
+      @connections[resolved] ||= connection
+      fqdn = resolved
     end
 
     if endpoint == @hyperv_endpoint
