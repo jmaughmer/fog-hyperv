@@ -40,6 +40,10 @@
   instead of connecting, and wants hyperv_ca_trust_path pointing at the CA
   that issued it or hyperv_ssl_verify: false to say otherwise. Encryption
   that never says who is at the other end is not protection on a routed path
+- Take an Integer 0 for hyperv_ssl_verify as the opt-out it spells: YAML reads
+  an unquoted 0 as the Integer rather than the string, and Ruby counts the
+  Integer as truthy, so a file that said hyperv_ssl_verify: 0 was verifying
+  while saying otherwise
 - Default the transport to kerberos when a realm is given and to ssl when a
   client certificate is given, before falling back to negotiate: ruby-winrm's
   negotiate always wraps NTLM tokens and NTLM is deprecated by its vendor
