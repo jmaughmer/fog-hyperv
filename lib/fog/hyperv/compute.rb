@@ -182,9 +182,11 @@ module Fog::Hyperv
         # blanket no_ssl_peer_verification this used to hardcode was set when the
         # alternative failed every self-signed listener outright, and over a routed
         # path an unverified listener is only as trustworthy as the nearest router.
-        # hyperv_ssl_verify: false is the deliberate opt-out.
+        # hyperv_ssl_verify: false is the deliberate opt-out, and an unquoted 0
+        # read out of YAML is the Integer, which Ruby counts as truthy — the
+        # number has to be matched as itself and not only as its string.
         @hyperv_ssl_verify = case options.fetch(:hyperv_ssl_verify) { true }
-                             when false, /\A(false|f|no|0)\z/i then false
+                             when false, 0, /\A(false|f|no|0)\z/i then false
                              else true
                              end
 

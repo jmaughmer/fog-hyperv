@@ -156,6 +156,15 @@ class UnitConnectionTest < Minitest::Test
     refute opts.key?(:no_ssl_peer_verification)
   end
 
+  # YAML reads an unquoted 0 as the Integer rather than the string, and Ruby
+  # counts the Integer as truthy: matched only as a string, a file that said
+  # hyperv_ssl_verify: 0 kept verification on while saying it was off
+  def test_the_integer_zero_says_no_the_same_as_the_boolean
+    opts = opts_for 'https://hyperv.example:5986/wsman', hyperv_ssl_verify: 0
+
+    assert_equal true, opts[:no_ssl_peer_verification]
+  end
+
   def test_the_tls_trust_and_client_certificate_paths_pass_through
     opts = opts_for 'https://hyperv.example:5986/wsman',
                     hyperv_ca_trust_path: '/etc/pki/hyperv-ca.pem',
