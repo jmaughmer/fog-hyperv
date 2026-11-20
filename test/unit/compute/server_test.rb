@@ -91,7 +91,7 @@ class UnitServerTest < Minitest::Test
   # answers nil, which is what tells a caller this gem is the tri-state one.
   def test_a_fresh_server_reads_the_cluster_question_as_unknown
     assert_nil Fog::Hyperv::Compute::Server.new.is_clustered
-    assert_equal [:tri_state_cluster], Fog::Hyperv::CAPABILITIES
+    assert_equal %i[tri_state_cluster exact_host_connection], Fog::Hyperv::CAPABILITIES
   end
 
   # The cluster's own answer beats the payload: the VM fixtures say IsClustered is

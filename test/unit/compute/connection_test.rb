@@ -64,18 +64,20 @@ class UnitConnectionTest < Minitest::Test
   end
 
   # ---------------------------------------------------------------- other machines
+  #
+  # A second node is addressed on the configured endpoint's own scheme, port and
+  # path: until this was derived, a second node was always asked on plain
+  # HTTP/5985, so a cluster with WinRM on 5986 over HTTPS could not be managed.
+  # FOG-11 moved that derivation out of connection()'s reach for names outside
+  # the configured endpoint set — connection() refuses them — so what these pin
+  # is endpoint_for, the derivation itself. connection() gets its own refusal
+  # tests in utils/winrm_exact_host_test.rb.
 
-  # A cluster's other nodes are reached over WinRM too, and they answer the way the
-  # configured node does. Until this was derived, a second node was always asked on
-  # plain HTTP/5985, so a cluster with WinRM on 5986 over HTTPS could not be
-  # managed: the request went to a port nothing listens on.
   def test_a_second_node_keeps_the_configured_scheme_port_and_path
     endpoints = []
     client = offline_client('https://hyperv.example:5986/wsman', endpoints)
 
-    client.send(:connection, 'node2')
-
-    assert_equal ['https://node2.example:5986/wsman'], endpoints
+    assert_equal ['https://node2.example:5986/wsman'], [client.send(:endpoint_for, 'node2.example')]
   end
 
   # The other half of the same rule: the endpoint that was configured is used as it
@@ -96,9 +98,7 @@ class UnitConnectionTest < Minitest::Test
     endpoints = []
     client = offline_client('https://hyperv.example/wsman', endpoints)
 
-    client.send(:connection, 'node2')
-
-    assert_equal ['https://node2.example:443/wsman'], endpoints
+    assert_equal ['https://node2.example:443/wsman'], [client.send(:endpoint_for, 'node2.example')]
   end
 
   # No endpoint at all (a client built from neither endpoint nor host) keeps the
@@ -107,9 +107,19 @@ class UnitConnectionTest < Minitest::Test
     endpoints = []
     client = offline_client(nil, endpoints)
 
-    client.send(:connection, 'node2')
+    assert_equal ['http://node2.example:5985/wsman'], [client.send(:endpoint_for, 'node2.example')]
+  end
 
-    assert_equal ['http://node2.example:5985/wsman'], endpoints
+  # The FOG-11 contract from this side: a node name that was never registered
+  # is refused outright — no completion, no derivation, no dial. The way to
+  # reach a second node is its own configured endpoint.
+  def test_an_unregistered_node_name_is_refused
+    endpoints = []
+    client = offline_client('https://hyperv.example:5986/wsman', endpoints)
+
+    assert_raises(Fog::Hyperv::Errors::PSError) { client.send(:connection, 'node2') }
+    # the one recorded value is initialize's own connect, before the recorder
+    assert_empty endpoints
   end
 
   # ---------------------------------------------------------------- auth and TLS options

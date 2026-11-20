@@ -260,6 +260,17 @@ module Fog::Hyperv
         false
       end
 
+      # Does this build's connection path accept only hosts inside the
+      # configured endpoint set. The refusal is a property of this code, not of
+      # the machine at the other end of the wire, so there is nothing to ask:
+      # any instance of this build enforces it. A caller on an older fog does
+      # not answer this question at all — that absence is the signal to treat
+      # the behaviour as missing.
+      # @return [Boolean] true for every instance of this build
+      def supports_exact_host_connections?
+        true
+      end
+
       private
 
       # A form or a configuration file hands numbers over as strings, and the
@@ -307,6 +318,17 @@ module Fog::Hyperv
         !handle_mock_response(_method: 'get_cluster').empty?
       rescue StandardError
         false
+      end
+
+      # True for every mocked client, for the same reason the real one answers true:
+      # the exact-host refusal lives in the connection path this Mock shares, not
+      # in a machine. A consumer gating on respond_to? gets the same answer here
+      # as on a real client of this build.
+      #
+      # @return [Boolean] does this build's connection path accept only hosts
+      #   inside the configured endpoint set
+      def supports_exact_host_connections?
+        true
       end
 
       def method_missing(method, *args)
