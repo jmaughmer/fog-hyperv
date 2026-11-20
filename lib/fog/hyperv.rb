@@ -78,6 +78,20 @@ module Fog
         end
         # rubocop:enable Naming/MemoizedInstanceVariableName
       end
+
+      # An identifier was handed to a clustered-role lookup that cannot identify a
+      # role and would change what the remote cmdlet filters on: nil, empty, or the
+      # all-zeros GUID, which PowerShell binds as "no filter" rather than "no match"
+      # and would return every role on the cluster. Raised client-side, before any
+      # wire traffic.
+      class InvalidRoleIdentifier < ServiceError; end
+
+      # A clustered-role read came back shaped in a way the code will not guess
+      # about: a successful call with no output, or an error whose
+      # FullyQualifiedErrorId carries a prefix that has not been measured against
+      # a known cluster state. Both are refused rather than read as "no role",
+      # because for the callers of this read "no role" licenses destroying disks.
+      class RoleReadUninterpretable < ServiceError; end
     end
 
     module Associations
@@ -85,6 +99,7 @@ module Fog
     end
 
     module Utils
+      autoload :ClusterRole, File.expand_path('hyperv/utils/cluster_role', __dir__)
       autoload :Powershell, File.expand_path('hyperv/utils/powershell', __dir__)
       autoload :Winrm, File.expand_path('hyperv/utils/winrm', __dir__)
     end
@@ -94,6 +109,14 @@ module Fog
     autoload :ModelExtends, File.expand_path('hyperv/model', __dir__)
     autoload :ModelIncludes, File.expand_path('hyperv/model', __dir__)
     autoload :VMCollection, File.expand_path('hyperv/collection', __dir__)
+
+    # Behaviour this fork provides that the published fog-hyperv gem does not, so a
+    # caller can ask for it before depending on it. `:tri_state_cluster` means
+    # Server#is_clustered answers true, false, or nil (nil when the host runs no
+    # cluster service at all) instead of collapsing "unknown" into false. A caller
+    # on an older gem sees no constant here and must treat every fork behaviour as
+    # absent.
+    CAPABILITIES = [:tri_state_cluster].freeze
 
     service(:compute, 'Compute')
 

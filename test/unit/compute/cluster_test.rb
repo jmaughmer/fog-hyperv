@@ -120,7 +120,37 @@ class UnitClusterTest < Minitest::Test
     by_id = @client.get_cluster_virtual_machine_role(vm_id: '416E49FD-28DD-413C-9743-AA3E69E4807D')
 
     assert_equal ['Virtual Machine mockvm1'], [by_id].flatten.map { |r| r[:name] }
-    assert_empty @client.get_cluster_virtual_machine_role(vm_id: '00000000-0000-0000-0000-000000000000')
+  end
+
+  # The all-zero GUID is refused rather than answered. It used to come back empty,
+  # which read as "no role for that machine" — but measured on Server 2025, the
+  # cmdlet binds an all-zero [guid] as the filter not being present at all and
+  # answers with every group on the cluster, so the empty answer was a coincidence
+  # of the fixture and the real behaviour was the dangerous one. A caller that has
+  # no id has not asked a question, and gets that said to it — on either request
+  # that speaks the role contract.
+  def test_an_identifier_that_would_switch_the_filter_off_is_refused
+    [
+      [:get_cluster_virtual_machine_role, { vm_id: '00000000-0000-0000-0000-000000000000' }],
+      [:get_cluster_virtual_machine_role, { vm_id: 'not-a-guid' }],
+      [:get_cluster_virtual_machine_role, { name: 'web*' }],
+      [:remove_cluster_virtual_machine_role, { id: '', computer_name: 'MOCK-HOST' }],
+      [:remove_cluster_virtual_machine_role,
+       { id: '00000000-0000-0000-0000-000000000000', computer_name: 'MOCK-HOST' }]
+    ].each do |method, args|
+      assert_raises(Fog::Hyperv::Errors::InvalidRoleIdentifier) do
+        @client.public_send(method, **args)
+      end
+    end
+  end
+
+  # A machine with no role answers the id lookup the way fog's contract says a miss
+  # reads: the collection raises NotFound, which is what Server#cluster_role turns
+  # into "the cluster positively answered no role".
+  def test_a_machine_with_no_role_answers_not_found
+    assert_raises(Fog::Errors::NotFound) do
+      @client.cluster_virtual_machine_roles.get(vm_id: '2c60b75f-6437-4b39-b156-a90538413c1b')
+    end
   end
 
   # Making a machine highly available, and taking that away again, are the two calls

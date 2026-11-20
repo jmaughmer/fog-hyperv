@@ -112,8 +112,12 @@ class Fog::Hyperv::Compute
     #   @return [Symbol] the VM firmware generation
     attribute :generation, type: :hypervenum, values: VM_GENERATION_VALUES, default: :UEFI
     # @!attribute [r] is_clustered
-    #   @return [Boolean] iv the VM is clustered
-    attribute :is_clustered, type: :boolean, default: false
+    #   @return [Boolean,nil] true when the cluster confirms this machine runs as a
+    #     role, false when the cluster positively answered that it has none, and nil
+    #     when nothing was established — no id, or an endpoint that is not a cluster
+    #     and so could not be asked. There is no default: an unchecked machine has to
+    #     read as unknown, because false is the answer that licenses disk removal.
+    attribute :is_clustered, type: :boolean
     # @!attribute [r] state
     #   @return [Symbol] the state of the VM
     #   @see VM_STATE_ENUM_VALUES
@@ -428,32 +432,79 @@ class Fog::Hyperv::Compute
 
     # @!attribute [r] cluster_role
     #   @return [ClusterVirtualMachineRole,nil] the clustered role this machine runs
-    #     as, or nil when it is not highly available — which includes a machine on a
-    #     stand-alone host, where there is no cluster to ask. Memoised, including the
-    #     nil, because on a stand-alone host the answer costs one WMI query to find
-    #     out and every later call is free.
+    #     as, or nil when it has none — which covers a machine on clustered hardware
+    #     that was never made highly available, and a machine on a stand-alone host,
+    #     where there is no cluster to ask. Memoised, including the nil, because every
+    #     later call is free once one has been made.
+    #
+    #   The lookup is by the machine's GUID, the way the plugin holds it: the role
+    #     group's real name is the machine's name as the cluster knows it, which is
+    #     not a name this side can construct (it has no local name source, and a
+    #     rename silently changes it). An unclassifiable read error is deliberately
+    #     not rescued here — "could not tell" must stay an error rather than read as
+    #     "no role", because "no role" is the answer that licenses disk removal.
     def cluster_role
       return @cluster_role if instance_variable_defined?(:@cluster_role)
 
-      @cluster_role =
-        if service.respond_to?(:supports_clusters?) && !service.supports_clusters?
-          nil
-        else
-          begin
-            service.cluster_virtual_machine_roles.get("Virtual Machine #{name}")
-          rescue Fog::Errors::NotFound, Fog::Hyperv::Errors::PSError
-            # NotFound is a machine on clustered hardware that was never made
-            # highly available; PSError covers a node without the cluster cmdlets,
-            # which says the same thing in the only way it can.
-            nil
-          end
-        end
+      unless cluster_queriable?
+        # Nothing to ask about, or an endpoint that cannot answer cluster
+        # questions at all — asking would raise before it ever reached a role.
+        return @cluster_role = nil
+      end
+
+      @cluster_role = begin
+        service.cluster_virtual_machine_roles.get(vm_id: id)
+      rescue Fog::Errors::NotFound
+        # The one miss answer that is safe to read as "no role": the read
+        # request only lets NotFound through for identifiers the cluster
+        # positively answered, and it re-raises everything else.
+        nil
+      end
     end
 
     # @!attribute [r] clustered?
     #   @return [Boolean] whether this machine fails over with the cluster
     def clustered?
       !cluster_role.nil?
+    end
+
+    # @!attribute [r] is_clustered
+    #   @return [Boolean,nil] the tri-state of the cluster question: true when the
+    #     cluster confirmed a role for this machine, false when the cluster answered
+    #     that it has none, and nil when the question was never answered — a machine
+    #     with no id to ask about, or an endpoint that is not a cluster endpoint and
+    #     so cannot answer it. An error is never flattened into nil or false either:
+    #     it propagates.
+    #
+    #   Not knowing and being told no are kept apart on purpose. The false is only
+    #     ever reached through a read that classified the cluster's answer, because
+    #     downstream disk removal is gated on that answer, and a probe that merely
+    #     failed to find a cluster does not distinguish a stand-alone host from a
+    #     clustered node whose cluster service is down. Get-VM's own IsClustered
+    #     property is deliberately not used as the source of this value: it is the
+    #     payload of the node the machine was read from, and this method exists to
+    #     say something the payload cannot. #attributes still carries it for callers
+    #     that want it.
+    #
+    #   Memoises every answer including the negative; Fog's own persistence methods
+    #   read #attributes, so the memo never leaks into anything saved.
+    #
+    #   The name matches the IsClustered property of every payload this model reads,
+    #   which is why it stays non-predicate despite returning the tri-state: it is a
+    #   published attribute name, not a local boolean choice.
+    def is_clustered # rubocop:disable Naming/PredicatePrefix
+      return nil unless cluster_queriable?
+      return @is_clustered if instance_variable_defined?(:@is_clustered)
+
+      @is_clustered = !cluster_role.nil?
+    end
+
+    # Whether the cluster question can be asked at all: it needs a machine id to ask
+    # about and a service that speaks clusters. A machine with neither has not been
+    # asked, which is the nil of the tri-state rather than an answer.
+    # @return [Boolean]
+    def cluster_queriable?
+      !id.nil? && !(service.respond_to?(:supports_clusters?) && !service.supports_clusters?)
     end
 
     # @!attribute [r] owner_node
