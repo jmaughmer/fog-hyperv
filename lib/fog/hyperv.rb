@@ -113,10 +113,14 @@ module Fog
     # Behaviour this fork provides that the published fog-hyperv gem does not, so a
     # caller can ask for it before depending on it. `:tri_state_cluster` means
     # Server#is_clustered answers true, false, or nil (nil when the host runs no
-    # cluster service at all) instead of collapsing "unknown" into false. A caller
-    # on an older gem sees no constant here and must treat every fork behaviour as
-    # absent.
-    CAPABILITIES = [:tri_state_cluster].freeze
+    # cluster service at all) instead of collapsing "unknown" into false.
+    # `:exact_host_connection` means the connection cache refuses any host that is
+    # neither the configured endpoint nor a name registered for it (the aliases
+    # discovery returns), so a machine name carried by request data can never
+    # point the client — and its credentials — at a host nobody configured.
+    # A caller on an older gem sees no constant here and must treat every fork
+    # behaviour as absent.
+    CAPABILITIES = %i[tri_state_cluster exact_host_connection].freeze
 
     service(:compute, 'Compute')
 

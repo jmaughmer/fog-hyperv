@@ -22,6 +22,13 @@ module Fog::Hyperv::Utils::Winrm
     "$ProgressPreference = 'SilentlyContinue'"
   ].join('; ').freeze
 
+  # A host name carries letters, digits, dots and hyphens — including IPv4 and
+  # bracketed IPv6 literals — and nothing else. Every shell metacharacter,
+  # space, colon, slash and quote is outside this shape by construction, so a
+  # value that matches it can neither break out of a quoted PowerShell string
+  # nor redirect a URI. The length bound is DNS's own.
+  SAFE_HOST_SHAPE = /\A(?:\[[0-9A-Fa-f:]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)\z/
+
   # Check if the PowerShell version is newer than the value specified
   # @param version [String] a semver version to check if powershell matches
   # @returns [Boolean] is the running PowerShell newer than the given version
@@ -168,14 +175,109 @@ module Fog::Hyperv::Utils::Winrm
     Fog::Hyperv::Utils::Powershell.build_call(pipeline.join(' | '), options, _ps_version: _ps_version)
   end
 
+  # True when a dotless name addresses the machine a registered host is on:
+  # either it is that host exactly, or it is the host's FIRST LABEL. The label
+  # rule is what the scan always meant — hyperv is how someone types
+  # hyperv.lab.example — and it is deliberately not start_with?: under plain
+  # prefix matching the name local routes to the localhost sentinel and hyp
+  # routes to the endpoint, which are not node addresses. The sentinels are
+  # excluded from the label rung entirely: localhost is a name only its own
+  # machine answers to, and a first-label rule over it would admit
+  # localhost.evil.example on a label match.
+  def host_matches?(wanted, registered_host)
+    return true if registered_host == wanted
+
+    return false if %w[. localhost].include?(registered_host) || wanted.include?('.')
+
+    registered_host.split('.').first == wanted
+  end
+
+  # True only when the machine behind a name is known to answer on it: the
+  # endpoint this instance was configured with, the sentinels that mean it, one
+  # of the aliases connect() registered for it, or a short name addressing a
+  # node under a registered host. The comparison is exact for anything with a
+  # dot in it and case-insensitive throughout; a dotless name matches a
+  # registered host only as its first label.
+  def endpoint_in_endpoint_set?(name)
+    return false unless name.is_a?(String) && !name.strip.empty?
+
+    wanted = name.strip.downcase
+    return true if %w[. localhost].include?(wanted)
+
+    unless @hyperv_endpoint.nil?
+      endpoint_host = URI.parse(@hyperv_endpoint.to_s).host.to_s.downcase
+      return true if host_matches?(wanted, endpoint_host)
+    end
+
+    @connections.each do |c_host, c_connection|
+      next if c_host.nil?
+      return true if host_matches?(wanted, c_host.to_s.downcase)
+
+      pair_host = URI(c_connection.instance_variable_get(:@connection_opts)[:endpoint]).host.to_s.downcase
+      next if pair_host.empty?
+      return true if host_matches?(wanted, pair_host)
+    end
+    false
+  rescue URI::Error
+    false
+  end
+
+  # A name with a shell metacharacter in it is refused wherever it is read, even
+  # when it would be refused a moment later anyway: the refusal must not depend
+  # on which endpoint happens to prefix-match.
+  def shell_safe_host?(host)
+    host.is_a?(String) && host.length <= 253 && SAFE_HOST_SHAPE.match?(host)
+  end
+
+  # The refusal for a name this instance may never speak to. The message quotes
+  # only the asked-for name — never any text that came back from a machine, and
+  # not the configured names either, which are this instance's own business.
+  # The name goes through String#inspect: a value carrying a newline could
+  # otherwise forge extra lines wherever this error is logged. The text rides
+  # in stderr because that is where PSError reads its message from, and the
+  # exit code is the 1 a cmdlet that refuses its argument answers with.
+  def refuse_unknown_host!(host)
+    raise Fog::Hyperv::Errors::PSError.new(
+      Fog::Hyperv::Utils::Winrm::LocalExecOutput.new(
+        '',
+        "Refusing to connect to #{host.inspect}: it is neither the configured endpoint, nor one " \
+        'of the names registered for it, nor a node under either. A client connects only to the ' \
+        'endpoint it was configured with and the names discovered for that endpoint.',
+        1
+      ),
+      'When connecting to a host outside the configured endpoint set'
+    )
+  end
+
   def connection(host)
+    # The set check is the FIRST statement of this method, before the
+    # completion scan below. Every value that reaches this method comes from a
+    # caller that can carry user-controlled data — the target computer of a
+    # command, or the computer_name a lazy load carries — and nothing below
+    # this line may run for a name outside the configured set: not the scan,
+    # not the completion, not endpoint_for.
+    if host.nil? || host.to_s.strip.empty?
+      # A bare call is the documented "configured endpoint" call (a command
+      # with no target computer); it carries no name to check.
+      host = '.'
+    elsif !%w[. localhost].include?(host.to_s.strip) && (!shell_safe_host?(host) || !endpoint_in_endpoint_set?(host))
+      refuse_unknown_host!(host)
+    end
+
+    # The cache scan, on the same matching rule as the set check above: a name
+    # that passed the check finds its connection here by exactly the same
+    # comparisons, so nothing routes through a looser second door.
     existing = @connections.find do |c_host, c_connection|
-      c_host.downcase.start_with?(host.downcase) ||
-        URI(c_connection.instance_variable_get(:@connection_opts)[:endpoint]).host.downcase.start_with?(host.downcase)
+      host_matches?(host.downcase, c_host.to_s.downcase) ||
+        host_matches?(host.downcase, URI(c_connection.instance_variable_get(:@connection_opts)[:endpoint]).host.to_s.downcase)
     end
 
     if existing
-      @connections[host] = existing unless @connections.key? host
+      # The cache stores the connection, never the [key, connection] pair that
+      # find returns: a pair stored under a short name was read back by the
+      # next scan as if it were a connection, and the method call it answered
+      # with was made against an Array.
+      @connections[host] = existing.last unless @connections.key? host
       return existing.last
     end
 
@@ -183,6 +285,10 @@ module Fog::Hyperv::Utils::Winrm
       endpoint = @hyperv_endpoint
     else
       unless host.include? '.'
+        # Reaching here means the name is already in the set — an alias
+        # discovery registered — so the completion resolves within the set. A
+        # short name that is NOT in the set was refused above: no completion
+        # attempt is ever made for it.
         host = run_cmd("[System.Net.Dns]::GetHostByName(#{host.inspect})", _return_fields: :host_name, _ps_version: 1)[:host_name]
       end
       endpoint = endpoint_for(host)
@@ -193,7 +299,9 @@ module Fog::Hyperv::Utils::Winrm
     end
 
     if existing
-      @connections[host] = existing unless @connections.key? host
+      # The pair-store rule again: the value stored is the connection itself,
+      # so the next scan reads back what it expects.
+      @connections[host] = existing.last unless @connections.key? host
       return existing.last
     end
 
@@ -203,11 +311,11 @@ module Fog::Hyperv::Utils::Winrm
   # Builds the WinRM endpoint another machine answers on: the configured endpoint's
   # scheme, port and path with its host replaced by this one.
   #
-  # Every request carries a target computer, so a cluster's other nodes are spoken to
-  # over WinRM as well, and they answer the same way the configured node does.
-  # Deriving the value rather than assuming http on 5985 is what makes a cluster that
-  # runs WinRM over HTTPS on 5986 manageable at all: the assumption sends a plain HTTP
-  # request to a port nothing is listening on there.
+  # Only hosts that passed connection()'s endpoint-set check reach this as a dial
+  # target; the derivation itself — and the pair it produces, once connected — is
+  # what makes a cluster that runs WinRM over HTTPS on 5986 manageable at all:
+  # assuming http on 5985 would send a plain request to a port nothing is
+  # listening on there.
   #
   # @param host [String] the machine to point the endpoint at
   # @return [String] a WinRM endpoint for that machine
