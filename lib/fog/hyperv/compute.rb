@@ -280,6 +280,16 @@ module Fog::Hyperv
         true
       end
 
+      # Does this build keep advisory streams out of the JSON payload — every
+      # rendered cmdlet call routes warning, verbose, debug and information
+      # records to the host's error channel, so a cmdlet that advises cannot
+      # corrupt the reply. Again a property of this code: the machine's cmdlets
+      # warn either way, and the render is what this answer is about.
+      # @return [Boolean] true for every instance of this build
+      def supports_stdout_json_hygiene?
+        true
+      end
+
       private
 
       # A form or a configuration file hands numbers over as strings, and the
@@ -347,6 +357,15 @@ module Fog::Hyperv
       # @return [Boolean] do this build's destructive path requests bind
       #   -LiteralPath and refuse an unprovable path
       def supports_literal_path_destructive?
+        true
+      end
+
+      # True for every mocked client, for the same reason the real one answers
+      # true: the stream routing lives in the run path this Mock shares.
+      #
+      # @return [Boolean] does this build keep advisory streams out of the JSON
+      #   payload on every shell run
+      def supports_stdout_json_hygiene?
         true
       end
 

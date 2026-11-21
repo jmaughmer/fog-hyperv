@@ -142,9 +142,16 @@ module Fog
     # that cannot name one exact location, so a machine name carrying wildcard
     # characters can no longer expand into a deletion set that includes its
     # siblings.
+    # `:stdout_json_hygiene` means every rendered cmdlet call routes its
+    # warning, verbose, debug and information records to the host's error
+    # channel instead of stdout, so a cmdlet that advises — the cluster
+    # cmdlets' remote-execution warning was measured landing before the payload
+    # — can no longer write itself into the stdout this gem parses as JSON: a
+    # successful call decodes instead of raising a DecodeError over a
+    # Warning: line.
     # A caller on an older gem sees no constant here and must treat every fork
     # behaviour as absent.
-    CAPABILITIES = %i[tri_state_cluster exact_host_connection literal_path_destructive].freeze
+    CAPABILITIES = %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene].freeze
 
     service(:compute, 'Compute')
 

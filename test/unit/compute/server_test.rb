@@ -91,7 +91,8 @@ class UnitServerTest < Minitest::Test
   # answers nil, which is what tells a caller this gem is the tri-state one.
   def test_a_fresh_server_reads_the_cluster_question_as_unknown
     assert_nil Fog::Hyperv::Compute::Server.new.is_clustered
-    assert_equal %i[tri_state_cluster exact_host_connection literal_path_destructive], Fog::Hyperv::CAPABILITIES
+    assert_equal %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene],
+                 Fog::Hyperv::CAPABILITIES
   end
 
   # The Mock client answers the capability questions exactly as a Real client
@@ -99,6 +100,13 @@ class UnitServerTest < Minitest::Test
   def test_the_mock_client_advertises_the_same_build_behaviours
     assert_includes Fog::Hyperv::CAPABILITIES, :literal_path_destructive
     assert_predicate @client, :supports_literal_path_destructive?
+  end
+
+  # The same answer for the stdout hygiene contract, for the same reason: the
+  # merge and the router live in the run path this Mock shares.
+  def test_the_mock_client_advertises_the_stdout_hygiene_behaviour
+    assert_includes Fog::Hyperv::CAPABILITIES, :stdout_json_hygiene
+    assert_predicate @client, :supports_stdout_json_hygiene?
   end
 
   # The cluster's own answer beats the payload: the VM fixtures say IsClustered is
