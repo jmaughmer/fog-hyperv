@@ -271,6 +271,15 @@ module Fog::Hyperv
         true
       end
 
+      # Does this build's destructive path requests bind -LiteralPath and refuse
+      # a path that cannot name one exact location. Like the host-scope answer
+      # there is nothing to probe: this is a property of this code, not of the
+      # machine at the other end of the wire.
+      # @return [Boolean] true for every instance of this build
+      def supports_literal_path_destructive?
+        true
+      end
+
       private
 
       # A form or a configuration file hands numbers over as strings, and the
@@ -328,6 +337,16 @@ module Fog::Hyperv
       # @return [Boolean] does this build's connection path accept only hosts
       #   inside the configured endpoint set
       def supports_exact_host_connections?
+        true
+      end
+
+      # True for every mocked client, for the same reason the real one answers
+      # true: the literal-path binding and the refusal live in the request code
+      # this Mock shares, not in a machine.
+      #
+      # @return [Boolean] do this build's destructive path requests bind
+      #   -LiteralPath and refuse an unprovable path
+      def supports_literal_path_destructive?
         true
       end
 

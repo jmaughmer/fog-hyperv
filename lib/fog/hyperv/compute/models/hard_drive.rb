@@ -45,9 +45,11 @@ class Fog::Hyperv::Compute
     #   @return [String] the name of the pool storing this hard drive's image
     attribute :pool_name
     # @!attribute support_persistent_reservations
-    #   @return [Boolean] if the underlying hard drive supports SCSI persistent reservations.
-    #     This should be set when multiple VMs share the same underlying disk.
-    attribute :support_persistent_reservations
+    #   @return [Boolean,nil] if the underlying hard drive supports SCSI
+    #     persistent reservations. This should be set when multiple VMs share
+    #     the same underlying disk. nil means the drive was never read through
+    #     the property — which destroy treats as unproven, not as absent.
+    attribute :support_persistent_reservations, type: :boolean
     # TODO? VM Snapshots?
 
     attribute :allow_unverified_paths, type: :boolean
@@ -174,6 +176,19 @@ class Fog::Hyperv::Compute
       return unless persisted?
 
       requires :id, :vm_id
+
+      # The refusal precedes every mutation, including the detach below: a
+      # caller who cannot get the file must not find the drive gone from the
+      # machine's configuration either. Detaching without the file destroys
+      # nothing, so it stays open with the flag unread; claiming the file is
+      # unshared is a separate claim, and only exactly false makes it.
+      if underlying && support_persistent_reservations != false
+        raise Fog::Hyperv::Errors::SharedDiskDeleteRefused,
+              'destroy(underlying: true) refuses a drive whose support_persistent_reservations ' \
+              "reads #{support_persistent_reservations.inspect}: true means several machines share this " \
+              'disk and deleting the file destroys a disk another running machine is reading, and nil ' \
+              'means the sharing state was never read, which is not a proof it is absent'
+      end
 
       service.remove_vm_hard_disk_drive computer_name: computer_name, vm_id: vm_id, id: id
       vhd.destroy if underlying && vhd?

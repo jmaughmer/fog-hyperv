@@ -92,6 +92,24 @@ module Fog
       # a known cluster state. Both are refused rather than read as "no role",
       # because for the callers of this read "no role" licenses destroying disks.
       class RoleReadUninterpretable < ServiceError; end
+
+      # A path was handed to a destructive request (Remove-Item, or the folder
+      # cleanup behind it) that cannot name one exact location: blank, a list of
+      # paths, a non-string, or a name carrying * ? [ ] — characters -LiteralPath
+      # binds as no file at all while the old -Path render expanded them into a
+      # set. Raised client-side, before any wire traffic, because the remote
+      # cmdlet cannot be the guard: a -Path render has already widened the scope
+      # by the time it runs.
+      class InvalidDestructivePath < ServiceError; end
+
+      # The underlying file behind a virtual hard drive was asked to be deleted
+      # while its shared-disk state was not exactly proven absent.
+      # SupportPersistentReservations reads true on a disk several machines
+      # share — deleting the file destroys a disk another running machine is
+      # reading — and reads nil when the drive was never read through the
+      # property. Both answers are refused; only exactly false licenses the
+      # delete, and the refusal precedes every mutation of the drive itself.
+      class SharedDiskDeleteRefused < ServiceError; end
     end
 
     module Associations
@@ -100,6 +118,7 @@ module Fog
 
     module Utils
       autoload :ClusterRole, File.expand_path('hyperv/utils/cluster_role', __dir__)
+      autoload :DestructivePath, File.expand_path('hyperv/utils/destructive_path', __dir__)
       autoload :Powershell, File.expand_path('hyperv/utils/powershell', __dir__)
       autoload :Winrm, File.expand_path('hyperv/utils/winrm', __dir__)
     end
@@ -118,9 +137,14 @@ module Fog
     # neither the configured endpoint nor a name registered for it (the aliases
     # discovery returns), so a machine name carried by request data can never
     # point the client — and its credentials — at a host nobody configured.
+    # `:literal_path_destructive` means a destructive path request binds
+    # -LiteralPath instead of -Path and refuses, before any wire traffic, a path
+    # that cannot name one exact location, so a machine name carrying wildcard
+    # characters can no longer expand into a deletion set that includes its
+    # siblings.
     # A caller on an older gem sees no constant here and must treat every fork
     # behaviour as absent.
-    CAPABILITIES = %i[tri_state_cluster exact_host_connection].freeze
+    CAPABILITIES = %i[tri_state_cluster exact_host_connection literal_path_destructive].freeze
 
     service(:compute, 'Compute')
 
