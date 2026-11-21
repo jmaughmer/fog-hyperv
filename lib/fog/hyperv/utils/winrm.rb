@@ -62,13 +62,6 @@ module Fog::Hyperv::Utils::Winrm
   # advertisement, and the requests all live on the cmdlet-call side.
   CMDLET_SOURCE = /\A[A-Z][A-Za-z0-9]*-[A-Za-z0-9-]*\z/
 
-  # A host name carries letters, digits, dots and hyphens — including IPv4 and
-  # bracketed IPv6 literals — and nothing else. Every shell metacharacter,
-  # space, colon, slash and quote is outside this shape by construction, so a
-  # value that matches it can neither break out of a quoted PowerShell string
-  # nor redirect a URI. The length bound is DNS's own.
-  SAFE_HOST_SHAPE = /\A(?:\[[0-9A-Fa-f:]+\]|[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)\z/
-
   # Check if the PowerShell version is newer than the value specified
   # @param version [String] a semver version to check if powershell matches
   # @returns [Boolean] is the running PowerShell newer than the given version
@@ -282,9 +275,12 @@ module Fog::Hyperv::Utils::Winrm
 
   # A name with a shell metacharacter in it is refused wherever it is read, even
   # when it would be refused a moment later anyway: the refusal must not depend
-  # on which endpoint happens to prefix-match.
+  # on which endpoint happens to prefix-match. The rule is HostInput's — the
+  # very one the builder validator uses for the options that compose an
+  # endpoint — so no value is a legal host at one door and a payload at the
+  # other, and a probe of HostInput.valid_host_input? is a probe of both.
   def shell_safe_host?(host)
-    host.is_a?(String) && host.length <= 253 && SAFE_HOST_SHAPE.match?(host)
+    Fog::Hyperv::Utils::HostInput.valid_host_input?(host)
   end
 
   # The refusal for a name this instance may never speak to. The message quotes
@@ -308,12 +304,11 @@ module Fog::Hyperv::Utils::Winrm
   end
 
   def connection(host)
-    # The set check is the FIRST statement of this method, before the
-    # completion scan below. Every value that reaches this method comes from a
-    # caller that can carry user-controlled data — the target computer of a
-    # command, or the computer_name a lazy load carries — and nothing below
-    # this line may run for a name outside the configured set: not the scan,
-    # not the completion, not endpoint_for.
+    # The set check is the FIRST statement of this method. Every value that
+    # reaches this method comes from a caller that can carry user-controlled
+    # data — the target computer of a command, or the computer_name a lazy load
+    # carries — and nothing below this line may run for a name outside the
+    # configured set: not the scan, not the composition, not endpoint_for.
     if host.nil? || host.to_s.strip.empty?
       # A bare call is the documented "configured endpoint" call (a command
       # with no target computer); it carries no name to check.
@@ -342,12 +337,23 @@ module Fog::Hyperv::Utils::Winrm
     if %w[. localhost].include? host
       endpoint = @hyperv_endpoint
     else
-      unless host.include? '.'
-        # Reaching here means the name is already in the set — an alias
-        # discovery registered — so the completion resolves within the set. A
-        # short name that is NOT in the set was refused above: no completion
-        # attempt is ever made for it.
-        host = run_cmd("[System.Net.Dns]::GetHostByName(#{host.inspect})", _return_fields: :host_name, _ps_version: 1)[:host_name]
+      # FOG-9 removed the remote GetHostByName completion that used to sit
+      # here. It was the one place a host string became remote PowerShell
+      # text, and it answered unqualified names with a silently-composed
+      # plain http endpoint. No name is completed on a machine's say-so
+      # anymore: what passed the set check above goes forward verbatim, and
+      # the only FQDN-ization left is Ruby's own resolver on this side of the
+      # wire. One composition is refused outright: an unqualified name on a
+      # TLS endpoint, because a certificate subject and a Kerberos service
+      # principal are host-qualified — the same refusal the builder makes of
+      # a configured endpoint that names a machine that way.
+      unless host.include?('.')
+        scheme = @hyperv_endpoint.nil? ? 'http' : URI.parse(@hyperv_endpoint).scheme.to_s
+        if scheme.casecmp('https').zero?
+          raise Fog::Hyperv::Errors::InvalidHostInput,
+                "connection refuses #{host.inspect} on a TLS endpoint: an unqualified name carries no " \
+                'certificate subject and no Kerberos service principal that means what it says'
+        end
       end
       endpoint = endpoint_for(host)
     end
