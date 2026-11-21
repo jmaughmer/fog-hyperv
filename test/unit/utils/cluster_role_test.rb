@@ -170,6 +170,46 @@ class UnitClusterRoleTest < Minitest::Test
     assert_raises(Fog::Hyperv::Errors::InvalidRoleIdentifier) { subject.build_removal_script(nil) }
   end
 
+  # -- the machine id's real home (FOG-16, measured on the lab cluster) ------
+  #
+  # A real cluster group matched by -VMId carries VmID = NULL: the property
+  # the original scripts read is not populated on the measured build, so a
+  # read attributed nothing (RoleReadUninterpretable on its own match) and a
+  # removal refused itself before removing (the '' -ne id arm fired). The id's
+  # real home is the VM resource's VMId cluster parameter — the same value
+  # the -VMId filter matches on — so both scripts resolve through it when the
+  # direct property is null, and a group whose id cannot be resolved at all
+  # stays refused rather than being read as agreement.
+
+  def test_the_read_script_resolves_the_machine_id_from_the_vm_resource
+    script = subject.build_read_script(vm_id: GUID, name: nil)
+
+    assert_includes script, subject::VM_ID_HELPER, 'the read carries the shared resolution helper'
+    assert_includes script, 'vmId = $vmIdText', 'the rows carry the resolved id, not the null property'
+    assert_includes script, 'virtualMachineId = $vmIdText'
+  end
+
+  def test_the_removal_script_resolves_the_id_before_comparing_it
+    script = subject.build_removal_script(GUID)
+
+    assert_includes script, "$resolvedId -eq ''", 'a group whose id resolves to nothing is refused, not agreed with'
+    assert_includes script, '$resolvedId -ine $vmid', 'the comparison runs on the resolved id, case-insensitively'
+    refute_includes script, '([string]$group.VmID) -ne $vmid', 'the null property must not decide the comparison'
+  end
+
+  # The resolution is shared, so a fix cannot land on one script and drift
+  # from the other.
+  def test_both_scripts_share_one_resolution_helper
+    read = subject.build_read_script(vm_id: GUID, name: nil)
+    remove = subject.build_removal_script(GUID)
+    helper = subject::VM_ID_HELPER
+
+    assert_includes read, helper
+    assert_includes remove, helper
+    assert_includes helper, '(Get-ClusterParameter -InputObject $vmResource -Name VMId).Value',
+                    'the helper resolves the id from the VM resource parameter when the property is null'
+  end
+
   # -- the read parser --------------------------------------------------------
 
   # Silence is not absence: the script always prints its envelope, and every

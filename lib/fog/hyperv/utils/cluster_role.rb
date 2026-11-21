@@ -165,12 +165,34 @@ module Fog
         # validators run here first, so a GUID is hex and dashes by construction and
         # a name has had its quote, backtick, dollar, wildcard, and control
         # characters refused, leaving doubled single quotes as the only escape left
-        # to apply. VmID is stringified because the real property is a System.Guid
-        # (and $null on a group that is not a machine role), and it is duplicated
-        # under virtualMachineId because that is the attribute name the model — and
-        # the plugin behind it — reads. $WarningPreference is silenced because the
-        # remote session writes its CredSSP negotiation notice to the warning stream
-        # on this transport; that notice is transport noise, never an outcome.
+        # to apply. The machine id rides per row as resolved by VM_ID_HELPER — the
+        # direct VmID property is NULL for real machine-role groups on the measured
+        # build — and it is duplicated under virtualMachineId because that is the
+        # attribute name the model — and the plugin behind it — reads.
+        # $WarningPreference is silenced because the remote session writes its
+        # CredSSP negotiation notice to the warning stream on this transport; that
+        # notice is transport noise, never an outcome.
+        # The machine id's real home (FOG-16, measured on the lab cluster
+        # 2026-11-21): a real cluster group matched by -VMId reports VmID as
+        # NULL — the property is not populated on the measured build, and the
+        # original scripts read nothing from it but ''. The value the -VMId
+        # filter itself matches on lives on the group's `Virtual Machine`
+        # resource as the VMId cluster parameter, so both scripts resolve it
+        # from there when the direct property is null. Both embed this one
+        # helper: a read and a removal must never disagree about which machine
+        # a group belongs to.
+        VM_ID_HELPER = <<~PS
+          function Get-FogHypervGroupVmId {
+            param ($group)
+            $value = $group.VmID
+            if ($null -eq $value) {
+              $vmResource = @(@($group | Get-ClusterResource) | Where-Object { $_.ResourceType.Name -eq 'Virtual Machine' }) | Select-Object -First 1
+              if ($null -ne $vmResource) { $value = (Get-ClusterParameter -InputObject $vmResource -Name VMId).Value }
+            }
+            [string]$value
+          }
+        PS
+
         def build_read_script(vm_id: nil, name: nil)
           filter =
             if vm_id
@@ -186,6 +208,7 @@ module Fog
           <<~SCRIPT
             $ErrorActionPreference = 'Stop'
             $WarningPreference = 'SilentlyContinue'
+            #{VM_ID_HELPER}
             $cluster = Get-Cluster
             $answer = [ordered]@{ clusterName = [string]$cluster.Name; miss = ''; roles = @() }
             try {
@@ -195,11 +218,12 @@ module Fog
               $groups = @()
             }
             $answer['roles'] = @(foreach ($group in $groups) {
+              $vmIdText = if ($group.GroupType -eq 'VirtualMachine') { Get-FogHypervGroupVmId $group } else { [string]$group.VmID }
               [ordered]@{
                 name = [string]$group.Name
                 groupType = [string]$group.GroupType
-                vmId = [string]$group.VmID
-                virtualMachineId = [string]$group.VmID
+                vmId = $vmIdText
+                virtualMachineId = $vmIdText
                 ownerNode = [string]$group.OwnerNode
                 state = $group.State
                 priority = $group.Priority
@@ -215,8 +239,11 @@ module Fog
         # NAME, so taking the name from a caller would let one GUID's removal delete
         # a different group. The group is resolved remotely from the same GUID and
         # three things are asserted in the same shell before anything is removed:
-        # exactly one group matched, it is a virtual machine role, and it carries the
-        # machine id that was asked about. After the removal the shell reads the
+        # exactly one group matched, it is a virtual machine role, and its machine
+        # id — resolved through VM_ID_HELPER, because the direct VmID property is
+        # NULL on real groups — equals the one asked about; a group whose id
+        # resolves to nothing is refused as unattributed, not read as agreement.
+        # After the removal the shell reads the
         # group back by name and requires the one answer measured for a name that is
         # gone (the ClusterObjectNotFound miss) — an empty answer without that error
         # raises rather than reporting a removal that was not proven. -Force alone
@@ -237,6 +264,7 @@ module Fog
           <<~SCRIPT
             $WarningPreference = 'SilentlyContinue'
             $ErrorActionPreference = 'Stop'
+            #{VM_ID_HELPER}
             $vmid = '#{vm_id}'
             $miss = ''
             try {
@@ -249,7 +277,9 @@ module Fog
               if ($groups.Count -ne 1) { throw ('the role read answered ' + $groups.Count + ' groups for one machine id; exactly one is required to remove a role') }
               $group = $groups[0]
               if ($group.GroupType -ne 'VirtualMachine') { throw ('the matched cluster group is not a virtual machine role; refusing to remove it') }
-              if (([string]$group.VmID) -ne $vmid) { throw ('the matched cluster group carries a different machine id than the one asked about; refusing to remove it') }
+              $resolvedId = Get-FogHypervGroupVmId $group
+              if ($resolvedId -eq '') { throw ('the matched cluster group carries no machine id at all; refusing to remove it') }
+              if ($resolvedId -ine $vmid) { throw ('the matched cluster group carries a different machine id than the one asked about; refusing to remove it') }
               $null = Remove-ClusterGroup -Name $group.Name -Force -RemoveResources
               try {
                 $left = @(Get-ClusterGroup -Name $group.Name)
@@ -291,9 +321,10 @@ module Fog
         #   VirtualMachine, a group carrying a different machine id than asked
         #   for, or a row whose name is not the name asked for;
         # - unfiltered reads keep only VirtualMachine groups, and rows come back
-        #   with virtual_machine_id mirrored from vm_id: a real ClusterGroup
-        #   carries the value as VmID, while the model — and the plugin behind
-        #   it — reads the attribute named virtual_machine_id.
+        #   with virtual_machine_id mirrored from vm_id: the script resolves the
+        #   id through VM_ID_HELPER (the direct VmID property is NULL on real
+        #   machine-role groups), while the model — and the plugin behind it —
+        #   reads the attribute named virtual_machine_id.
         #
         # @param stdout [String] the raw stdout of the read script
         # @param cluster_name [String,nil] cluster the caller expects, if it knows
