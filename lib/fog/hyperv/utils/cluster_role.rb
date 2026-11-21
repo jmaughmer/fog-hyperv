@@ -181,7 +181,7 @@ module Fog
         # from there when the direct property is null. Both embed this one
         # helper: a read and a removal must never disagree about which machine
         # a group belongs to.
-        VM_ID_HELPER = <<~'PS'
+        VM_ID_HELPER = <<~PS
           function Get-FogHypervGroupVmId {
             param ($group)
             $value = $group.VmID

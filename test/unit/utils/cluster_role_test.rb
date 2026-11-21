@@ -184,9 +184,7 @@ class UnitClusterRoleTest < Minitest::Test
   def test_the_read_script_resolves_the_machine_id_from_the_vm_resource
     script = subject.build_read_script(vm_id: GUID, name: nil)
 
-    assert_includes script, 'Get-ClusterParameter'
-    assert_includes script, '-Name VMId'
-    assert_includes script, "$_.ResourceType.Name -eq 'Virtual Machine'"
+    assert_includes script, subject::VM_ID_HELPER, 'the read carries the shared resolution helper'
     assert_includes script, 'vmId = $vmIdText', 'the rows carry the resolved id, not the null property'
     assert_includes script, 'virtualMachineId = $vmIdText'
   end
@@ -194,9 +192,8 @@ class UnitClusterRoleTest < Minitest::Test
   def test_the_removal_script_resolves_the_id_before_comparing_it
     script = subject.build_removal_script(GUID)
 
-    assert_includes script, 'Get-ClusterParameter'
+    assert_includes script, "$resolvedId -eq ''", 'a group whose id resolves to nothing is refused, not agreed with'
     assert_includes script, '$resolvedId -ine $vmid', 'the comparison runs on the resolved id, case-insensitively'
-    assert_includes script, '$resolvedId -eq'
     refute_includes script, '([string]$group.VmID) -ne $vmid', 'the null property must not decide the comparison'
   end
 
@@ -209,6 +206,8 @@ class UnitClusterRoleTest < Minitest::Test
 
     assert_includes read, helper
     assert_includes remove, helper
+    assert_includes helper, '(Get-ClusterParameter -InputObject $vmResource -Name VMId).Value',
+                    'the helper resolves the id from the VM resource parameter when the property is null'
   end
 
   # -- the read parser --------------------------------------------------------
