@@ -169,8 +169,18 @@ module Fog::Hyperv
         @bake_optmap = true
 
         @connections = {}
+        # FOG-9: a host-shaped option is checked before it composes or carries
+        # an endpoint, by the same rule the connection path uses later. A value
+        # that survives to this point can name no shell metacharacter, no
+        # space, and no scheme surprise, and an unqualified name never reaches
+        # a TLS endpoint at all.
         @hyperv_endpoint = options[:hyperv_endpoint]
-        @hyperv_endpoint ||= "http://#{options[:hyperv_host]}:5985/wsman" if options[:hyperv_host]
+        if @hyperv_endpoint
+          Fog::Hyperv::Utils::HostInput.validate_endpoint!(@hyperv_endpoint, 'hyperv_endpoint')
+        elsif options[:hyperv_host]
+          Fog::Hyperv::Utils::HostInput.validate_host_input!(options[:hyperv_host], 'hyperv_host')
+          @hyperv_endpoint = "http://#{options[:hyperv_host]}:5985/wsman"
+        end
         @hyperv_username = options[:hyperv_username]
         @hyperv_password = options[:hyperv_password]
         @hyperv_realm = options[:hyperv_realm]
@@ -290,6 +300,18 @@ module Fog::Hyperv
         true
       end
 
+      # Does this build check host-shaped inputs — the host option, the
+      # endpoint URL, and every name reaching the connection path — against
+      # one allowlist before they compose or carry an endpoint, and has it
+      # removed the remote name completion that used to turn a host string
+      # into remote PowerShell text. A property of this code like the others:
+      # the checks run on this side of the wire, and a caller can prove the
+      # rule itself without a machine through Fog::Hyperv::Utils::HostInput.
+      # @return [Boolean] true for every instance of this build
+      def supports_input_hardening?
+        true
+      end
+
       private
 
       # A form or a configuration file hands numbers over as strings, and the
@@ -366,6 +388,16 @@ module Fog::Hyperv
       # @return [Boolean] does this build keep advisory streams out of the JSON
       #   payload on every shell run
       def supports_stdout_json_hygiene?
+        true
+      end
+
+      # True for every mocked client, for the same reason the real one answers
+      # true: the host-input checks are this build's code, and the probe —
+      # Fog::Hyperv::Utils::HostInput — answers without a machine.
+      #
+      # @return [Boolean] does this build harden host-shaped inputs on every
+      #   door a host can enter through
+      def supports_input_hardening?
         true
       end
 

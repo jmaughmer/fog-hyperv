@@ -59,22 +59,21 @@ class UnitWinrmExactHostTest < Minitest::Test
       conn
     end
 
-    # The two remote commands of the routing path, answered from the knobs the
-    # test sets: discovery (the $env:computerName probe, answered with streams)
-    # and completion (GetHostByName on a name, answered with a hash).
+    # The one remote command of the routing path, answered from the knobs the
+    # test sets: discovery (the $env:computerName probe, answered with
+    # streams). Completion is GONE — FOG-9 removed the remote GetHostByName —
+    # so a completion call now falls into the raise below, and the suite fails
+    # the moment anything starts completing names again.
     def run_cmd(cmd, _skip_json: false, **opts)
       @cmd_calls << [cmd, opts]
-      raise 'discovery is stubbed to fail' if @discovery_fails && cmd.include?('$env:computerName')
+      discovery = cmd.include?('$env:computerName')
+      raise 'discovery is stubbed to fail' if @discovery_fails && discovery
 
-      if cmd.include?('$env:computerName')
-        Fog::Hyperv::Utils::Winrm::LocalExecOutput.new(
-          "#{[@discovered_shortname, @discovered_fqdn].compact.join('; ')}\n", '', 0
-        )
-      elsif cmd.include?('GetHostByName')
-        { host_name: @discovered_fqdn }
-      else
-        raise 'only discovery and completion are stubbed'
-      end
+      raise "only discovery is stubbed, and this call proves completion came back: #{cmd}" unless discovery
+
+      Fog::Hyperv::Utils::Winrm::LocalExecOutput.new(
+        "#{[@discovered_shortname, @discovered_fqdn].compact.join('; ')}\n", '', 0
+      )
     end
   end
 

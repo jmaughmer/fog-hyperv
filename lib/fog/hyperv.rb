@@ -102,6 +102,15 @@ module Fog
       # by the time it runs.
       class InvalidDestructivePath < ServiceError; end
 
+      # A host-shaped input — the host option that composes an endpoint, the
+      # endpoint URL itself, or a name about to be composed into an endpoint —
+      # carried something outside the host shape: a shell metacharacter, a
+      # space, a scheme no WinRM listener answers on, a name no certificate or
+      # Kerberos principal could mean on TLS, or a length no DNS name reaches.
+      # Raised client-side, before any wire traffic, because this is the one
+      # door a name has to pass before it can name a machine anywhere.
+      class InvalidHostInput < ServiceError; end
+
       # The underlying file behind a virtual hard drive was asked to be deleted
       # while its shared-disk state was not exactly proven absent.
       # SupportPersistentReservations reads true on a disk several machines
@@ -119,6 +128,7 @@ module Fog
     module Utils
       autoload :ClusterRole, File.expand_path('hyperv/utils/cluster_role', __dir__)
       autoload :DestructivePath, File.expand_path('hyperv/utils/destructive_path', __dir__)
+      autoload :HostInput, File.expand_path('hyperv/utils/host_input', __dir__)
       autoload :Powershell, File.expand_path('hyperv/utils/powershell', __dir__)
       autoload :Winrm, File.expand_path('hyperv/utils/winrm', __dir__)
     end
@@ -149,9 +159,18 @@ module Fog
     # — can no longer write itself into the stdout this gem parses as JSON: a
     # successful call decodes instead of raising a DecodeError over a
     # Warning: line.
+    # `:input_hardening` means host-shaped inputs answer to one host-shape
+    # allowlist before they can compose or carry an endpoint, fog no longer
+    # completes a caller-supplied name with a remote GetHostByName — the one
+    # place a host string became remote PowerShell text — an unqualified name
+    # is refused on a TLS endpoint instead of silently answered with a plain
+    # http one, and the rule is a pure function (Fog::Hyperv::Utils::HostInput)
+    # probeable without a machine, shared by the builder validator and the
+    # connection-path gate as one rule.
     # A caller on an older gem sees no constant here and must treat every fork
     # behaviour as absent.
-    CAPABILITIES = %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene].freeze
+    CAPABILITIES = %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene
+                      input_hardening].freeze
 
     service(:compute, 'Compute')
 
