@@ -22,6 +22,46 @@ module Fog::Hyperv::Utils::Winrm
     "$ProgressPreference = 'SilentlyContinue'"
   ].join('; ').freeze
 
+  # PowerShell renders the warning, verbose, debug and information streams onto
+  # the shell's stdout, and run_cmdlist reads stdout as the JSON payload. That
+  # is not theoretical: measured on a live cluster, Add-ClusterVirtualMachineRole
+  # SUCCEEDED — group created, VM intact — and fog raised DecodeError quoting
+  # 'Warning:' at line 1, because the cmdlet's remote-execution advisory printed
+  # before the payload; Stop-ClusterNode rendered roughly 29 such lines in one
+  # call. Windows PowerShell 5.1 cannot merge those streams into stderr —
+  # measured on the lab node, `cmd 3>&2` is a parse error ("The '3>&2' operator
+  # is reserved for future use", and the parse failure itself then exits 0, so
+  # it would have silently emptied every reply). What 5.1 does take is merging
+  # each stream into the success stream, so these redirects ride the rendered
+  # cmdlet call together with the ADVISORY_ROUTER below, which pulls the
+  # records back out. The success stream is deliberately absent from the
+  # merges — the payload must stay where it is.
+  STREAM_REDIRECTS = ' 3>&1 4>&1 5>&1 6>&1'
+
+  # The router the merged advisories land in front of. Warning/verbose/debug/
+  # information records are identified by their exact types (all four measured
+  # on the lab node under n>&1) and handed to the host's error-line channel —
+  # $Host.UI.WriteErrorLine was measured to arrive on the WinRM stderr an
+  # operator reads, without producing an error record: it leaves $? true and
+  # adds no FullyQualifiedErrorId, so fog's own error detection cannot mistake
+  # an advisory for a failure. Everything else passes through untouched, and
+  # when no advisory fires the router is invisible. The console-style TYPE:
+  # prefix keeps each line as readable as the bare stdout render was.
+  ADVISORY_ROUTER = 'ForEach-Object { if ($_ -is [System.Management.Automation.WarningRecord] ' \
+                    '-or $_ -is [System.Management.Automation.VerboseRecord] ' \
+                    '-or $_ -is [System.Management.Automation.DebugRecord] ' \
+                    '-or $_ -is [System.Management.Automation.InformationRecord]) ' \
+                    "{ $Host.UI.WriteErrorLine($_.GetType().Name.Replace('Record', '').ToUpper() + ': ' + $_.ToString()) } " \
+                    'else { $_ } }'
+
+  # A verb-noun cmdlet name and nothing else: the only source shape the merge
+  # and router may follow. It excludes the expressions the version and
+  # discovery probes are ('$PSVersionTable.PSVersion' starts with a dollar) and
+  # every multi-statement or argument-bearing raw script, which are left
+  # exactly as they were — claiming to clean those would be a false
+  # advertisement, and the requests all live on the cmdlet-call side.
+  CMDLET_SOURCE = /\A[A-Z][A-Za-z0-9]*-[A-Za-z0-9-]*\z/
+
   # A host name carries letters, digits, dots and hyphens — including IPv4 and
   # bracketed IPv6 literals — and nothing else. Every shell metacharacter,
   # space, colon, slash and quote is outside this shape by construction, so a
@@ -73,8 +113,16 @@ module Fog::Hyperv::Utils::Winrm
         end
         pscalls = [pscalls.join("\n")] unless separate_calls
 
-        pscalls.each_with_index do |cmd, idx|
-          Fog::Logger.debug "PS; >>> \"#{cmd.split("\n").join("\n\t")}\""
+        pscalls.each_with_index do |pscall, idx|
+          # Joining the pscall here repairs a latent flaw of separate_calls:
+          # per-call pscalls are Arrays, and the first method call below used
+          # to get one. The stream redirects this PR adds ride the rendered
+          # cmdlet call inside the pscall (see build_pscall), not a wrap here:
+          # PowerShell 5.1 only accepts a redirect on a command invocation, and
+          # the settings below must stay at session scope, which a wrap would
+          # also have broken.
+          script = Array(pscall).join("\n")
+          Fog::Logger.debug "PS; >>> \"#{script.split("\n").join("\n\t")}\""
 
           # The settings ride along inside the first run rather than getting a run
           # of their own: ruby-winrm charges a command and a receive for every
@@ -82,13 +130,13 @@ module Fog::Hyperv::Utils::Winrm
           # second of wire per call before anything was asked. The settings are
           # assignments, they print nothing, and the shell keeps them between runs
           # the way the separate call left them for every run that followed.
-          out = shell.run(idx.zero? ? "#{SHELL_SETTINGS}; #{cmd}" : cmd)
+          out = shell.run(idx.zero? ? "#{SHELL_SETTINGS}; #{script}" : script)
           Fog::Logger.debug "PS; <<< OUT=[#{out.stdout.inspect}] ERR=[#{out.stderr.inspect}] EXIT=[#{out.exitcode}]"
 
           is_success = true
           is_success = shell.run('$?').stdout.strip.downcase == 'true' if out.stderr.include? 'FullyQualifiedErrorId'
 
-          raise Fog::Hyperv::Errors::PSError.new(out, "When executing #{cmd}") if
+          raise Fog::Hyperv::Errors::PSError.new(out, "When executing #{script}") if
             out.exitcode != 0 || !is_success
         end
       end
@@ -171,6 +219,16 @@ module Fog::Hyperv::Utils::Winrm
     options = Fog::Hyperv.camelize(options.compact)
 
     command += ' @Args' unless command.include? '@Args'
+    # The merge and the router ride the rendered cmdlet call itself and go on
+    # ahead of the rest of the pipeline, so the advisories the cmdlet writes are
+    # pulled out of the stream before Where/Select/ConvertTo-Json ever see
+    # them, and stdout carries only the payload. An expression like
+    # $PSVersionTable.PSVersion, and a raw script, match nothing here and
+    # render exactly as they used to.
+    if CMDLET_SOURCE.match?(command.sub(/ @Args\z/, ''))
+      command += STREAM_REDIRECTS
+      pipeline.unshift(ADVISORY_ROUTER)
+    end
     pipeline = [command] + pipeline
     Fog::Hyperv::Utils::Powershell.build_call(pipeline.join(' | '), options, _ps_version: _ps_version)
   end
