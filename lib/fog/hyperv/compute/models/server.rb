@@ -10,6 +10,12 @@ class Fog::Hyperv::Compute
     extend Fog::Hyperv::ModelExtends
     include Fog::Hyperv::ModelIncludes
 
+    # The path shapes Windows treats as naming one exact location: a drive
+    # letter with a root, or a UNC share. Anything else is resolved by
+    # whatever consumes it — and the WinRM shell consumes a relative path
+    # against its own working directory, measured C:\ on this fork.
+    ABSOLUTE_PATH = %r{\A(?:\w:[\\/]|[\\/]{2}\w+[\\/])}i
+
     # rubocop:disable Layout/HashAlignment
 
     # VM runtime state
@@ -148,6 +154,13 @@ class Fog::Hyperv::Compute
     # @!attribute path
     #   @return [String] the path on disk where the VM configuration is stored
     attribute :path, type: :string
+    # @!attribute placement_path
+    #   @return [String] the absolute folder this machine's disks are built
+    #     in — the placement decision's answer, such as a cluster shared
+    #     volume's mount folder. When set it replaces the host's own disk
+    #     root outright (the host is not even asked); a relative value is
+    #     refused at use, not joined.
+    attribute :placement_path, type: :string
     # @!attribute processor_count
     #   @return [Integer] the number of processors in the VM
     attribute :processor_count, type: :integer, default: 1
@@ -343,8 +356,7 @@ class Fog::Hyperv::Compute
     #   a custom path to store the VM configuration under - will use a subdir under the default config path if relative
     def create(boot_device: nil, switch_name: nil, **attrs)
       attrs[:no_vhd] = true unless attrs[:new_vhd_path]
-      attrs[:path] = [computer.virtual_machine_path, attrs[:path]].join('\\') \
-        if attrs[:path] && attrs[:path] !~ %r{^(\w:[\\/]|[\\/]{2}\w+[\\/])}i
+      attrs[:path] = join_config_root(attrs[:path]) if attrs[:path]
 
       # Attributes that can't be set as part of the New-VM call
       post_create_attributes = {
@@ -535,18 +547,83 @@ class Fog::Hyperv::Compute
 
     # Build a path for where to store a VHD of a given name
     # @return [String] the absolute path for the VHD
+    # @raise [Fog::Hyperv::Errors::InvalidPlacementPath] when neither a
+    #   placement folder nor the host's disk root can compose an absolute
+    #   path — a relative one would be resolved against the remote shell's
+    #   working directory, not the machine's storage.
     def build_vhd_path(filename = nil)
       requires :name
 
-      [computer.virtual_hard_disk_path, name, filename].compact.join('\\')
+      folder = placement_folder
+      path =
+        if folder
+          [folder, filename].compact.join('\\')
+        else
+          disk_root = computer&.virtual_hard_disk_path
+          if disk_root.nil? || disk_root.strip.empty?
+            raise Fog::Hyperv::Errors::InvalidPlacementPath,
+                  "Refusing to build a disk path for '#{name}': no placement folder was given and " \
+                  "the hosting computer #{computer_name.inspect} answers no disk root to build under. " \
+                  'The join would come out relative and the remote shell would resolve it against ' \
+                  'its own working directory, not the machine.'
+          end
+          [disk_root, name, filename].compact.join('\\')
+        end
+      unless path =~ ABSOLUTE_PATH
+        raise Fog::Hyperv::Errors::InvalidPlacementPath,
+              "Refusing the relative disk path #{path.inspect} built for '#{name}': a relative path " \
+              'is resolved against the remote shell\'s working directory, not the machine\'s storage.'
+      end
+      path
     end
 
     # Build a path for where to store configuration files
     # @return [String] the absolute path for the configuration store
+    # @raise [Fog::Hyperv::Errors::InvalidPlacementPath] when the host
+    #   answers no configuration root — same rule as #build_vhd_path.
     def build_config_path(subdir = nil)
       requires :name
 
-      [computer.virtual_machine_path, name, subdir].compact.join('\\')
+      config_root = computer&.virtual_machine_path
+      if config_root.nil? || config_root.strip.empty?
+        raise Fog::Hyperv::Errors::InvalidPlacementPath,
+              "Refusing to build a config path for '#{name}': the hosting computer " \
+              "#{computer_name.inspect} answers no config root to build under."
+      end
+      [config_root, name, subdir].compact.join('\\')
+    end
+
+    # The machine's named placement folder, if the caller named one.
+    # @return [String, nil] the placement folder when one was set
+    # @raise [Fog::Hyperv::Errors::InvalidPlacementPath] when the folder
+    #   given is not absolute.
+    def placement_folder
+      return nil if placement_path.nil? || placement_path.to_s.strip.empty?
+      unless placement_path =~ ABSOLUTE_PATH
+        raise Fog::Hyperv::Errors::InvalidPlacementPath,
+              "Refusing to place '#{name}' in the relative folder #{placement_path.inspect}: a " \
+              'placement folder must be absolute (a drive root or a UNC share); a relative one is ' \
+              'resolved against the remote shell\'s working directory, not the machine\'s storage.'
+      end
+      placement_path
+    end
+
+    # Compose a caller-given configuration path onto the host's config root,
+    # absolutely. An absolute path is already one exact location and rides
+    # through untouched, without asking the host anything.
+    # @return [String] the absolute path
+    # @raise [Fog::Hyperv::Errors::InvalidPlacementPath] when the path is
+    #   relative and the host answers no config root.
+    def join_config_root(path)
+      return path if path =~ ABSOLUTE_PATH
+
+      config_root = computer&.virtual_machine_path
+      if config_root.nil? || config_root.strip.empty?
+        raise Fog::Hyperv::Errors::InvalidPlacementPath,
+              "Refusing to resolve the relative config path #{path.inspect}: the hosting computer " \
+              "#{computer_name.inspect} answers no config root to resolve it against."
+      end
+      [config_root, path].join('\\')
     end
 
     # Get the username of the main system account

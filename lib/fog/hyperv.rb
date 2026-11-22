@@ -132,6 +132,19 @@ module Fog
       # property. Both answers are refused; only exactly false licenses the
       # delete, and the refusal precedes every mutation of the drive itself.
       class SharedDiskDeleteRefused < ServiceError; end
+
+      # A disk or configuration path was about to be built — for the machine's
+      # folder, the host's disk root, or the machine name under it — from parts
+      # that cannot compose an absolute location: a placement folder given as
+      # relative, a host that answers no disk or configuration root at all, or
+      # a machine whose hosting computer cannot be resolved to ask. Raised
+      # client-side, before any wire traffic, because the measured outcome of
+      # the old join was worse than silence: the relative "name\file.vhdx" it
+      # returned was resolved by the remote shell against its own working
+      # directory (C:\), landing the disk wherever the session happened to
+      # start rather than where the machine lives — and on a cluster, a disk
+      # off the placed volume is a disk the cluster cannot follow.
+      class InvalidPlacementPath < ServiceError; end
     end
 
     module Associations
