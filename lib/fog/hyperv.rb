@@ -93,6 +93,19 @@ module Fog
       # because for the callers of this read "no role" licenses destroying disks.
       class RoleReadUninterpretable < ServiceError; end
 
+      # A cluster shared volume read came back in a shape this code refuses to
+      # guess about: a successful call with no output, an answer that cannot be
+      # attributed to a cluster (no witness name or id, or a different cluster than
+      # the one asked for), a clustered node with no shared volumes at all (a
+      # contradiction on the measured build, where the CSV list has no second
+      # source), or a row whose state, name, SharedVolumeInfo count, or
+      # online-without-mount-path combination contradicts what the cmdlet is
+      # measured to be able to answer. All of these are refused rather than
+      # returned, because the answer being avoided is a placement decision onto
+      # storage that is not there — the disk create would fail late, on the
+      # storage layer, after the VM and its role already exist.
+      class ClusterCapacityUninterpretable < ServiceError; end
+
       # A path was handed to a destructive request (Remove-Item, or the folder
       # cleanup behind it) that cannot name one exact location: blank, a list of
       # paths, a non-string, or a name carrying * ? [ ] — characters -LiteralPath
@@ -126,6 +139,7 @@ module Fog
     end
 
     module Utils
+      autoload :ClusterCapacity, File.expand_path('hyperv/utils/cluster_capacity', __dir__)
       autoload :ClusterRole, File.expand_path('hyperv/utils/cluster_role', __dir__)
       autoload :DestructivePath, File.expand_path('hyperv/utils/destructive_path', __dir__)
       autoload :HostInput, File.expand_path('hyperv/utils/host_input', __dir__)
@@ -167,10 +181,21 @@ module Fog
     # http one, and the rule is a pure function (Fog::Hyperv::Utils::HostInput)
     # probeable without a machine, shared by the builder validator and the
     # connection-path gate as one rule.
+    # `:cluster_capacity_projection` means the Cluster Shared Volume read is the
+    # measured-shape script read (Fog::Hyperv::Utils::ClusterCapacity): the
+    # answering cluster is witnessed before any volume list is trusted, volumes
+    # arrive flat with volume_path taken from SharedVolumeInfo.FriendlyVolumeName
+    # only when Test-Path passes on the dialled node, state as the measured
+    # integer enum (2 = Online, 3 = Offline), Partition capacity, and the health
+    # flags, and every answer that cannot be attributed to the asked-for cluster
+    # or that contradicts the measured cmdlet shapes raises
+    # ClusterCapacityUninterpretable instead of becoming an empty or
+    # path-less list. Before this constant, the read reached callers with a nil
+    # path, size and free space for every volume on every cluster.
     # A caller on an older gem sees no constant here and must treat every fork
     # behaviour as absent.
     CAPABILITIES = %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene
-                      input_hardening].freeze
+                      input_hardening cluster_capacity_projection].freeze
 
     service(:compute, 'Compute')
 

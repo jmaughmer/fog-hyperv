@@ -70,20 +70,33 @@ class UnitClusterTest < Minitest::Test
   end
 
   # The Cluster Shared Volumes are what a placement decision picks from, so the path
-  # from the fixture to a model with its volume path has to hold.
+  # from the fixture to a model with its flat, measured-shape fields has to hold:
+  # the offline volume (measured shape: state 3, no mount path, no capacity) stays
+  # visibly offline rather than becoming a volume with a nil path like its online
+  # siblings.
   def test_lists_the_cluster_shared_volumes
     volumes = @client.clusters.first.shared_volumes
 
-    assert_equal ['Cluster Volume1', 'Cluster Volume2'], volumes.map(&:name)
+    assert_equal ['Cluster Volume1', 'Cluster Volume2', 'Cluster Volume3'], volumes.map(&:name)
     assert(volumes.all? { |v| v.is_a? Fog::Hyperv::Compute::ClusterSharedVolume })
     assert_equal 'C:\\ClusterStorage\\Volume1', volumes.first.volume_path
-    assert_equal 'mock-node2', volumes.last.owner_node
-    assert_equal 1_073_741_824_000, volumes.first.shared_volume[:size]
+    assert_equal 2, volumes.first.state
+    assert_equal 'mock-host', volumes.first.owner_node
+    assert_equal 1_073_741_824_000, volumes.first.size
+    assert_equal 703_699_976_192, volumes.first.free_space
+    assert_equal 'a49ab1ad-0f1e-4a2b-9c3d-1e2f3a4b5c6d', volumes.first.id
+
+    offline = volumes[1]
+
+    assert_equal 3, offline.state
+    assert_nil offline.volume_path
+    assert_nil offline.size
+    assert_nil offline.free_space
   end
 
   def test_a_shared_volume_can_be_asked_for_by_name
     assert_equal 'Cluster Volume2', @client.cluster_shared_volumes.get('Cluster Volume2').name
-    assert_raises(Fog::Errors::NotFound) { @client.cluster_shared_volumes.get('Cluster Volume3') }
+    assert_raises(Fog::Errors::NotFound) { @client.cluster_shared_volumes.get('Cluster Volume4') }
   end
 
   # The role list is how the plugin finds which node owns a machine, so it has to

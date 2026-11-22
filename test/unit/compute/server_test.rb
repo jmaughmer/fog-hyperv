@@ -92,7 +92,7 @@ class UnitServerTest < Minitest::Test
   def test_a_fresh_server_reads_the_cluster_question_as_unknown
     assert_nil Fog::Hyperv::Compute::Server.new.is_clustered
     assert_equal %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene
-                    input_hardening],
+                    input_hardening cluster_capacity_projection],
                  Fog::Hyperv::CAPABILITIES
   end
 

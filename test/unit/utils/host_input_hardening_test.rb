@@ -241,11 +241,11 @@ class UnitHostInputHardeningTest < Minitest::Test
   # --- the capability the plugin's enablement gate reads.
 
   def test_the_build_declares_the_input_hardening_capability
-    # PLG-22's runtime gate reads the five entries together, so the whole
-    # list is pinned exactly — a sixth behaviour has to be added here on
-    # purpose, not by accident.
+    # PLG-22's runtime gate reads the five entries together and PLG-14's
+    # capacity read rides the sixth, so the whole list is pinned exactly —
+    # another behaviour has to be added here on purpose, not by accident.
     assert_equal %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene
-                    input_hardening],
+                    input_hardening cluster_capacity_projection],
                  Fog::Hyperv::CAPABILITIES
   end
 

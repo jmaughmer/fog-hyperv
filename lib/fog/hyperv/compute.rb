@@ -312,6 +312,18 @@ module Fog::Hyperv
         true
       end
 
+      # Does this build read Cluster Shared Volumes through the measured-shape
+      # script (Fog::Hyperv::Utils::ClusterCapacity): cluster witness before any
+      # volume list, flat rows with volume_path only when it exists on the dialled
+      # node, the measured state enum, and a raise — never an empty or path-less
+      # list — for every answer that contradicts the measured cmdlet shapes. A
+      # property of this code like the others: the refusal logic is a pure function
+      # (parse_capacity_read) a caller can prove without a machine.
+      # @return [Boolean] true for every instance of this build
+      def supports_cluster_capacity_projection?
+        true
+      end
+
       private
 
       # A form or a configuration file hands numbers over as strings, and the
@@ -398,6 +410,17 @@ module Fog::Hyperv
       # @return [Boolean] does this build harden host-shaped inputs on every
       #   door a host can enter through
       def supports_input_hardening?
+        true
+      end
+
+      # True for every mocked client, for the same reason the real one answers
+      # true: the capacity reading and its refusal rules are this build's code,
+      # and the probe — Fog::Hyperv::Utils::ClusterCapacity.parse_capacity_read —
+      # answers without a machine.
+      #
+      # @return [Boolean] does this build answer shared volumes as flat,
+      #   witnessed, refuse-don't-guess rows
+      def supports_cluster_capacity_projection?
         true
       end
 
