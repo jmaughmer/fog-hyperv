@@ -43,6 +43,71 @@ compute.servers.all
 #=>   ...
 ```
 
+## Authentication and encryption
+
+The default transport, `negotiate`, is not what it sounds like: ruby-winrm wraps
+NTLM tokens in the Negotiate scheme and never attempts a Kerberos leg, so every
+connection is NTLM whatever the server would prefer. NTLM is deprecated by its
+vendor — Microsoft has removed NTLMv1, plans to block NTLM single-sign-on by
+default from late 2026, and has stated that disabling NTLM outright is the end
+state — so a deployment should treat NTLM as what's left when the transports
+below cannot be had, not as the default.
+
+* `hyperv_realm: 'EXAMPLE.COM'` authenticates over Kerberos (transport
+  `kerberos`, password-based GSSAPI; the calling machine needs working MIT
+  Kerberos). Kerberos authenticates the server back to the client, which NTLM
+  never does, and costs one round-trip where the NTLM handshake costs several —
+  worth real seconds per connection on a high-latency link. The service
+  principal is built as `WSMAN/<host>@<REALM>`, which is what WinRM listeners
+  are registered under; `hyperv_service:` overrides it for a listener published
+  otherwise.
+* `hyperv_client_cert:`/`hyperv_client_key:` (with `hyperv_key_pass:` for an
+  encrypted key) authenticate by certificate over `https`, for listeners set up
+  with `Negotiate`/`Client` certificate authentication. This is the NTLM-free
+  option for a workgroup host with no domain to Kerberos against.
+* `hyperv_transport:` overrides the choice: `'negotiate'`, `'kerberos'` or
+  `'ssl'`. A realm on its own means `kerberos`, a client certificate on its own
+  means `ssl`, both means `kerberos`.
+
+An `https` endpoint is verified against the system trust store by default.
+`hyperv_ca_trust_path:` points at the CA certificate (or store directory) when
+it is not there, and `hyperv_ssl_verify: false` turns verification off for a
+self-signed listener — worth knowing that an unverified `https` endpoint
+encrypts the conversation without ever saying who is at the other end, which
+over any routed path is encryption that buys nothing; the WinRM service's own
+certificate management (AD CS auto-enrolment, `winrm quickconfig` over HTTPS)
+or `ca_trust_path` are the answers to why you might want it off.
+
+```ruby
+compute = Fog::Compute.new(
+  provider: :hyperv,
+  hyperv_endpoint: 'https://hyperv.example.com:5986/wsman',
+  hyperv_username: 'foreman@EXAMPLE.COM',
+  hyperv_password: 'password',
+  hyperv_realm: 'EXAMPLE.COM',
+  hyperv_ca_trust_path: '/etc/pki/hyperv/listener-ca.pem'
+)
+```
+
+## Timeouts and retries
+
+WinRM is a conversation on the wire twice over: opening a shell waits on a
+reply, and a running command is collected in long-poll receives that hold the
+connection until the command answers. The winrm gem's waits describe a local
+network — 60 seconds to an operation, 70 to a receive, three shell-open retries
+ten seconds apart — and a path with hundreds of milliseconds of latency and
+real loss on it can exceed those legitimately. `hyperv_operation_timeout` and
+`hyperv_receive_timeout` (seconds) set the waits, `hyperv_retry_limit` and
+`hyperv_retry_delay` the retries of a shell that would not open; leaving one
+out keeps the gem's number. The gem raises if a receive timeout is given below
+its operation timeout rather than silently truncating commands.
+
+A satellite site worth naming: on an 800 ms link a single fog call is six or
+seven round trips deep — shell open, command, receives, cleanup — so retries
+of ten seconds are better asked about than inherited, and the transports that
+skip the NTLM handshake (above) save their own two or three seconds per
+connection on such a path.
+
 ## Failover clusters
 
 A cluster is managed through its nodes, so **point `hyperv_endpoint`/`hyperv_host` at

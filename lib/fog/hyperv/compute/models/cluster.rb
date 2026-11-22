@@ -39,8 +39,11 @@ class Fog::Hyperv::Compute
     def roles
       return [] unless persisted?
 
-      requires :id
-      service.cluster_virtual_machine_roles.all(id: id)
+      # No filter is passed: the cmdlet has no cluster-id filter to apply, and the
+      # endpoint answers for the cluster it belongs to — which the read names in
+      # its answer rather than taking it on trust here. Passing this model's id as
+      # a filter would claim a filter that does not exist.
+      service.cluster_virtual_machine_roles.all
     end
 
     # @!attribute [r] nodes

@@ -169,21 +169,26 @@ class Fog::Hyperv::Compute
     def destroy
       requires :path
 
-      service.remove_item(
-        computer_name: computer_name,
-        path: [path, "#{path}.*"],
-      )
-      components = path.split('\\')
+      # Refused before any traffic: a path this side cannot name exactly is a
+      # scope this side cannot bound, and the old render widened it — the
+      # "#{path}.*" sibling glob reached Remove-Item -Path as a wildcard, so a
+      # name like web[12].vhdx swept up web1.vhdx and web2.vhdx beside it. One
+      # literal file goes now, or nothing does.
+      exact = Fog::Hyperv::Utils::DestructivePath.validate_destructive_path!(path, __method__)
+      service.remove_item(computer_name: computer_name, path: exact)
+
+      components = exact.split('\\')
       if components[-2] == vm.name
-        # if (!Test-Path -Path ...\*) { Remove-Item -Path ... -Recurse -Force }
+        # The folder holding this machine's files, removed only when an
+        # enumeration that ran and succeeded finds nothing left in it. The old
+        # guard was Test-Path root\*, and Test-Path answers $false for an
+        # access-denied or unreadable folder exactly as it answers for an empty
+        # one — the guard failed open straight into a recursive delete.
         vmpath = components[0..-2].join '\\'
         service.run_cmdlist(
-          [
-            ["$anyFiles = Test-Path", { path: [vmpath, '*'].join('\\') }],
-            ['if (-not $anyFiles) { Remove-Item @Args }', { path: vmpath, recurse: true, force: true }]
-          ],
+          [[Fog::Hyperv::Utils::DestructivePath.build_empty_folder_removal_script(vmpath), {}]],
           skip_json: true,
-          target_computer: computer_name,
+          target_computer: computer_name
         )
       end
       true

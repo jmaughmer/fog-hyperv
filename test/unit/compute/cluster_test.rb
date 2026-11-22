@@ -70,20 +70,33 @@ class UnitClusterTest < Minitest::Test
   end
 
   # The Cluster Shared Volumes are what a placement decision picks from, so the path
-  # from the fixture to a model with its volume path has to hold.
+  # from the fixture to a model with its flat, measured-shape fields has to hold:
+  # the offline volume (measured shape: state 3, no mount path, no capacity) stays
+  # visibly offline rather than becoming a volume with a nil path like its online
+  # siblings.
   def test_lists_the_cluster_shared_volumes
     volumes = @client.clusters.first.shared_volumes
 
-    assert_equal ['Cluster Volume1', 'Cluster Volume2'], volumes.map(&:name)
+    assert_equal ['Cluster Volume1', 'Cluster Volume2', 'Cluster Volume3'], volumes.map(&:name)
     assert(volumes.all? { |v| v.is_a? Fog::Hyperv::Compute::ClusterSharedVolume })
     assert_equal 'C:\\ClusterStorage\\Volume1', volumes.first.volume_path
-    assert_equal 'mock-node2', volumes.last.owner_node
-    assert_equal 1_073_741_824_000, volumes.first.shared_volume[:size]
+    assert_equal 2, volumes.first.state
+    assert_equal 'mock-host', volumes.first.owner_node
+    assert_equal 1_073_741_824_000, volumes.first.size
+    assert_equal 703_699_976_192, volumes.first.free_space
+    assert_equal 'a49ab1ad-0f1e-4a2b-9c3d-1e2f3a4b5c6d', volumes.first.id
+
+    offline = volumes[1]
+
+    assert_equal 3, offline.state
+    assert_nil offline.volume_path
+    assert_nil offline.size
+    assert_nil offline.free_space
   end
 
   def test_a_shared_volume_can_be_asked_for_by_name
     assert_equal 'Cluster Volume2', @client.cluster_shared_volumes.get('Cluster Volume2').name
-    assert_raises(Fog::Errors::NotFound) { @client.cluster_shared_volumes.get('Cluster Volume3') }
+    assert_raises(Fog::Errors::NotFound) { @client.cluster_shared_volumes.get('Cluster Volume4') }
   end
 
   # The role list is how the plugin finds which node owns a machine, so it has to
@@ -120,7 +133,37 @@ class UnitClusterTest < Minitest::Test
     by_id = @client.get_cluster_virtual_machine_role(vm_id: '416E49FD-28DD-413C-9743-AA3E69E4807D')
 
     assert_equal ['Virtual Machine mockvm1'], [by_id].flatten.map { |r| r[:name] }
-    assert_empty @client.get_cluster_virtual_machine_role(vm_id: '00000000-0000-0000-0000-000000000000')
+  end
+
+  # The all-zero GUID is refused rather than answered. It used to come back empty,
+  # which read as "no role for that machine" — but measured on Server 2025, the
+  # cmdlet binds an all-zero [guid] as the filter not being present at all and
+  # answers with every group on the cluster, so the empty answer was a coincidence
+  # of the fixture and the real behaviour was the dangerous one. A caller that has
+  # no id has not asked a question, and gets that said to it — on either request
+  # that speaks the role contract.
+  def test_an_identifier_that_would_switch_the_filter_off_is_refused
+    [
+      [:get_cluster_virtual_machine_role, { vm_id: '00000000-0000-0000-0000-000000000000' }],
+      [:get_cluster_virtual_machine_role, { vm_id: 'not-a-guid' }],
+      [:get_cluster_virtual_machine_role, { name: 'web*' }],
+      [:remove_cluster_virtual_machine_role, { id: '', computer_name: 'MOCK-HOST' }],
+      [:remove_cluster_virtual_machine_role,
+       { id: '00000000-0000-0000-0000-000000000000', computer_name: 'MOCK-HOST' }]
+    ].each do |method, args|
+      assert_raises(Fog::Hyperv::Errors::InvalidRoleIdentifier) do
+        @client.public_send(method, **args)
+      end
+    end
+  end
+
+  # A machine with no role answers the id lookup the way fog's contract says a miss
+  # reads: the collection raises NotFound, which is what Server#cluster_role turns
+  # into "the cluster positively answered no role".
+  def test_a_machine_with_no_role_answers_not_found
+    assert_raises(Fog::Errors::NotFound) do
+      @client.cluster_virtual_machine_roles.get(vm_id: '2c60b75f-6437-4b39-b156-a90538413c1b')
+    end
   end
 
   # Making a machine highly available, and taking that away again, are the two calls

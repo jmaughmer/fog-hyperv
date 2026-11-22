@@ -1,3 +1,50 @@
+## Unreleased
+
+- Recognise hyperv_operation_timeout, hyperv_receive_timeout,
+  hyperv_retry_limit and hyperv_retry_delay and pass them to the WinRM
+  connection: the gem's waits describe a local network, and a high-latency or
+  lossy path could not say otherwise without patching the gem. Unset keeps the
+  gem's own numbers, and a value that is not a number says which option was
+  wrong
+- Ask a newly connected host its short name and its fully qualified one in one
+  shell call rather than two: each was a command and a receive on the wire, and
+  both read the same $env:computerName, so every first contact with an endpoint
+  cost a round trip it did not need
+- Let a host that will not answer for its own names keep the connection:
+  GetHostByName throws on a machine whose name does not resolve and the shell's
+  Stop preference turns that into a raised error, which aborted a connect that
+  had already registered the endpoint under the name it was made to. The
+  discovery now says so in the debug log and the connection loses the extra
+  names and nothing else
+- Run the shell settings as part of the first command instead of as a call of
+  their own: every shell.run is a command and a receive on the wire, so the
+  separate settings call was a full round trip paid before every single thing
+  asked of a host
+- Send the Kerberos connection its service principal: the gem builds it as
+  "<service>/<host>@<realm>", refuses a kerberos connection that names none,
+  and fog named none — a realm, which is all the Kerberos option has ever
+  carried, could therefore never authenticate. WinRM listeners answer to
+  WSMAN, which is what is sent now; hyperv_service overrides it for a listener
+  published under another principal
+- Recognise hyperv_ssl_verify, hyperv_ca_trust_path, hyperv_client_cert,
+  hyperv_client_key and hyperv_key_pass, and give hyperv_transport the
+  transport that authenticates by certificate to speak
+- Verify the TLS peer of an https endpoint by default, which the connection
+  used to switch off unconditionally. This changes behaviour for an https
+  endpoint with a certificate the trust store does not answer for: it fails
+  instead of connecting, and wants hyperv_ca_trust_path pointing at the CA
+  that issued it or hyperv_ssl_verify: false to say otherwise. Encryption
+  that never says who is at the other end is not protection on a routed path
+- Take an Integer 0 for hyperv_ssl_verify as the opt-out it spells: YAML reads
+  an unquoted 0 as the Integer rather than the string, and Ruby counts the
+  Integer as truthy, so a file that said hyperv_ssl_verify: 0 was verifying
+  while saying otherwise
+- Default the transport to kerberos when a realm is given and to ssl when a
+  client certificate is given, before falling back to negotiate: ruby-winrm's
+  negotiate always wraps NTLM tokens and NTLM is deprecated by its vendor
+  with disabling it the stated end state, so the transports that do not speak
+  it should not need to be asked for by name
+
 ## v0.2.2 2026-11-16
 
 - Fix valid? and supports_clusters? always returning false for remote hosts,

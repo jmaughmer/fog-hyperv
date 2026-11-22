@@ -47,25 +47,36 @@ class UnitWinrmSetupTest < Minitest::Test
     # than read off an instance variable of the test
     @client.define_singleton_method(:connection) { |_computer| RecordingConnection.new(shell) }
     @client.run_cmd('Get-VM', _skip_json: true)
-    @setup = @shell.calls.first
+    # The run that carried the command; the PowerShell version probe may have run
+    # first, and it is not what these checks are about
+    @script = @shell.calls.find { |call| call.include?('Get-VM') }
   end
 
   # A progress bar renders into the response over a shell, and the control
   # characters in the rendering make the reply impossible to parse, which arrives
   # as a transport error that says nothing about the call that caused it
   def test_progress_rendering_is_turned_off_before_anything_is_asked
-    assert_includes @setup, "$ProgressPreference = 'SilentlyContinue'"
+    assert_includes @script, "$ProgressPreference = 'SilentlyContinue'"
   end
 
   def test_the_shell_still_asks_no_questions_and_stops_at_the_first_error
-    assert_includes @setup, "$ConfirmPreference = 'None'"
-    assert_includes @setup, "$ErrorActionPreference = 'Stop'"
+    assert_includes @script, "$ConfirmPreference = 'None'"
+    assert_includes @script, "$ErrorActionPreference = 'Stop'"
   end
 
-  # The settings have to be applied by the very first call of the shell: the ones
-  # after it are the commands that were asked for
-  def test_the_settings_are_applied_before_the_command_that_needs_them
-    assert_includes @setup, 'ProgressPreference'
-    assert_equal 'Get-VM', @shell.calls.last.strip
+  # Every shell.run is a command and a receive on the wire, so a settings call of
+  # its own is a paid round trip before the asked-for call pays its own; the
+  # settings ride in the front of the first one instead, ahead of the command
+  # that needs them, and the shell keeps them for every run after. (Recording is
+  # also the first run to build a call, which pays for the memoized PowerShell
+  # version probe - that run is allowed; a run that is only settings is not.)
+  def test_the_settings_ride_in_the_first_call_ahead_of_the_command
+    settings_only = @shell.calls.reject { |call| call.include?('Get-VM') || call.include?('PSVersionTable') }
+    assert_empty settings_only, 'the settings must not cost a round trip of their own'
+
+    call = @shell.calls.find { |c| c.include?('Get-VM') }
+    assert_includes call, "$ProgressPreference = 'SilentlyContinue'"
+    assert call.index('ProgressPreference') < call.index('Get-VM'),
+           'the settings have to be applied before the command that depends on them'
   end
 end
