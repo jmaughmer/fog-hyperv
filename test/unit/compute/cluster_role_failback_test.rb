@@ -82,7 +82,9 @@ class UnitClusterRoleFailbackTest < Minitest::Test
   # The fixture mirrors the real read's answer shape, so the model fields have
   # to arrive through the mocked read exactly as they do through the script.
   def test_a_mocked_role_reports_its_failback_state
-    role = @client.get_cluster_virtual_machine_role(vm_id: '416e49fd-28dd-413c-9743-aa3e69e4807d')
+    role = @client.clusters.first.roles.detect do |r|
+      r.virtual_machine_id.to_s.casecmp('416e49fd-28dd-413c-9743-aa3e69e4807d').zero?
+    end
 
     assert_equal 0, role[:auto_failback_type]
     assert_equal false, role.auto_failback

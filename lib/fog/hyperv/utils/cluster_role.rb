@@ -169,6 +169,12 @@ module Fog
         # direct VmID property is NULL for real machine-role groups on the measured
         # build — and it is duplicated under virtualMachineId because that is the
         # attribute name the model — and the plugin behind it — reads.
+        # The three high-availability properties (AutoFailbackType,
+        # FailbackWindowStart, FailbackWindowEnd) ride out verbatim: they read
+        # fine on every build even where their writes are refused (measured on
+        # HV-CL01, evidence section 60), and their interpretation — type 0 is
+        # off, 4294967295 is the measured "no window" sentinel — lives on the
+        # model so mocked and scripted answers read through one rule.
         # $WarningPreference is silenced because the remote session writes its
         # CredSSP negotiation notice to the warning stream on this transport; that
         # notice is transport noise, never an outcome.
@@ -227,6 +233,9 @@ module Fog
                 ownerNode = [string]$group.OwnerNode
                 state = $group.State
                 priority = $group.Priority
+                autoFailbackType = $group.AutoFailbackType
+                failbackWindowStart = $group.FailbackWindowStart
+                failbackWindowEnd = $group.FailbackWindowEnd
               }
             })
             ConvertTo-Json -Compress -Depth 4 -InputObject $answer
@@ -294,6 +303,139 @@ module Fog
               }
             }
           SCRIPT
+        end
+
+        # Refuse anything that is not exactly a boolean before it reaches a
+        # failback write. This is a write: there is no third state. nil would
+        # have to mean both "leave it alone" and "I asked you to change it",
+        # and a truthy string like 'false' would turn failback OFF for a caller
+        # who meant it ON. Raised client-side, before any wire traffic.
+        def validate_failback_flag!(value)
+          return value if value == true || value == false
+
+          raise ArgumentError,
+                "auto_failback must be exactly true or false; this is a write, and #{value.inspect} " \
+                'cannot say which of the two the cluster should be set to'
+        end
+
+        # The one shell a failback write runs. The measured contract (evidence
+        # section 60, HV-CL01, Server 2025 / cluster build 26100): the property
+        # is $group.AutoFailbackType — 0 off, 1 on — and it is the ONE HA group
+        # property this build takes as a write on a VM-role group; Priority and
+        # the failback window answer the same assignment with "Unable to save
+        # property changes", and preferred owners silently no-op.
+        #
+        # The same triple identification the removal script demands before it
+        # deletes runs before anything is written — exactly one group for the
+        # id, it is a virtual machine role, and its machine id (resolved
+        # through VM_ID_HELPER) is the one asked about — because the assignment
+        # lands on whatever the filter matched.
+        #
+        # The write is then PROVEN, not trusted: the group is re-read by its own
+        # remote name ($group.Name, never interpolated through Ruby) and the
+        # fresh AutoFailbackType must equal what was asked. A property set that
+        # answers success and does not stick is measured behaviour on this
+        # object model, so 'applied' is reserved for the read-back agreeing.
+        #
+        # Three verdicts ride home in one JSON object: 'applied' (read-back
+        # agrees), 'refused' (the assignment threw, or the read-back disagrees),
+        # and 'no-role' (the PSArgument miss, measured as "no virtual machine
+        # carries this id"). Anything else — the group checks throwing, the
+        # cluster not answering at all — dies in the shell, and the request
+        # surfaces that as its PSError rather than as a verdict this side would
+        # have to guess about.
+        def build_failback_script(id:, enabled:)
+          id = validate_role_identifier!(id, __method__)
+          wanted = enabled ? 1 : 0
+
+          <<~SCRIPT
+            $ErrorActionPreference = 'Stop'
+            $WarningPreference = 'SilentlyContinue'
+            #{VM_ID_HELPER}
+            $cluster = Get-Cluster
+            $answer = [ordered]@{ clusterName = [string]$cluster.Name; result = ''; error = ''; wanted = #{wanted}; actual = $null }
+            try {
+              $groups = @(Get-ClusterGroup -VMId ([guid]'#{id}'))
+              if ($groups.Count -ne 1) { throw ('the role read answered ' + $groups.Count + ' groups for one machine id; exactly one is required to set its failback') }
+              $group = $groups[0]
+              if ($group.GroupType -ne 'VirtualMachine') { throw 'the matched cluster group is not a virtual machine role; refusing to configure it' }
+              $resolvedId = Get-FogHypervGroupVmId $group
+              if ($resolvedId -eq '') { throw 'the matched cluster group carries no machine id at all; refusing to configure it' }
+              if ($resolvedId -ine '#{id}') { throw 'the matched cluster group carries a different machine id than the one asked about; refusing to configure it' }
+              try {
+                $group.AutoFailbackType = #{wanted}
+                $recheck = @(Get-ClusterGroup -Name $group.Name) | Select-Object -First 1
+                $answer['actual'] = $recheck.AutoFailbackType
+                $answer['result'] = if ($null -ne $answer['actual'] -and $answer['actual'] -eq #{wanted}) { 'applied' } else { 'refused' }
+              } catch {
+                $answer['result'] = 'refused'
+                $answer['error'] = $_.Exception.Message
+              }
+            } catch {
+              $fullyQualifiedErrorId = [string]$_.FullyQualifiedErrorId
+              if ($fullyQualifiedErrorId -like 'PSArgument*') { $answer['result'] = 'no-role' } else { throw }
+            }
+            ConvertTo-Json -Compress -Depth 4 -InputObject $answer
+          SCRIPT
+        end
+
+        # Read the failback verdict, and return true only on the one shape that
+        # means the cluster took the setting: an 'applied' whose read-back value
+        # equals what was asked (re-checked here, not only in the shell, because
+        # a self-contradicting verdict is exactly the kind of answer this
+        # contract refuses to believe). The measured refusal text rides into
+        # RolePropertyWriteRefused so the caller can show what the cluster said;
+        # 'no-role' — the machine is not clustered — is its own error, because
+        # "not clustered" and "cluster said no" are different answers the plugin
+        # has to tell apart. Silence, garbage, an answer with no cluster to
+        # attribute it to, and any unmeasured verdict arm are the same class of
+        # non-answer the role read already refuses.
+        def parse_failback_write(stdout, wanted:)
+          text = stdout.to_s.strip
+          if text.empty?
+            raise Fog::Hyperv::Errors::RoleReadUninterpretable,
+                  'the clustered failback write succeeded and printed nothing; the script always prints ' \
+                  'its verdict, so silence is not a readable outcome'
+          end
+
+          payload = begin
+            Fog::Hyperv.uncamelize(Fog::JSON.decode(text))
+          rescue StandardError => e
+            raise Fog::Hyperv::Errors::RoleReadUninterpretable,
+                  "the clustered failback write did not answer with the JSON object this request defines (#{e.class})"
+          end
+          unless payload.is_a?(Hash)
+            raise Fog::Hyperv::Errors::RoleReadUninterpretable,
+                  "the clustered failback write answered #{payload.class} where the script emits a single object"
+          end
+          if payload[:cluster_name].to_s.empty?
+            raise Fog::Hyperv::Errors::RoleReadUninterpretable,
+                  'the clustered failback write came back without the answering cluster name, so the answer ' \
+                  'cannot be attributed to any cluster'
+          end
+
+          case payload[:result].to_s
+          when 'applied'
+            actual = payload[:actual]
+            if actual.nil? || actual.to_i != wanted
+              raise Fog::Hyperv::Errors::RolePropertyWriteRefused,
+                    "the clustered failback write answered applied but the read-back said #{actual.inspect}, " \
+                    "not the #{wanted} that was asked for"
+            end
+            true
+          when 'refused'
+            detail = payload[:error].to_s
+            detail = "the read-back said #{payload[:actual].inspect}, not the #{wanted} that was asked for" if detail.empty?
+            raise Fog::Hyperv::Errors::RolePropertyWriteRefused,
+                  "the cluster refused the automatic-failback setting (#{detail})"
+          when 'no-role'
+            raise Fog::Hyperv::Errors::ClusterRoleNotFound,
+                  'the machine has no clustered role, so there is no high-availability setting to change'
+          else
+            raise Fog::Hyperv::Errors::RoleReadUninterpretable,
+                  "the clustered failback write answered a verdict this contract does not define " \
+                  "(#{payload[:result].inspect})"
+          end
         end
 
         # Turn the read script's stdout into role rows, refusing every answer

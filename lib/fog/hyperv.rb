@@ -145,6 +145,21 @@ module Fog
       # start rather than where the machine lives — and on a cluster, a disk
       # off the placed volume is a disk the cluster cannot follow.
       class InvalidPlacementPath < ServiceError; end
+
+      # A clustered-role write asked about a machine the cluster positively
+      # answered is not clustered: the measured PSArgument miss from
+      # Get-ClusterGroup -VMId, the same answer the role read turns into
+      # nil/NotFound. A read may answer "no role"; a write has nothing left to
+      # act on, and this says so instead of applying the setting to a guess.
+      class ClusterRoleNotFound < ServiceError; end
+
+      # The cluster refused a role property write, or took the assignment and
+      # the proof read-back said otherwise. Measured on HV-CL01 (evidence
+      # section 60): group property writes on VM-role groups answer "Unable to
+      # save property changes" when refused — that text rides into this error —
+      # and a silent no-stick is refused on the read-back disagreement rather
+      # than reported as applied.
+      class RolePropertyWriteRefused < ServiceError; end
     end
 
     module Associations
@@ -205,10 +220,19 @@ module Fog
     # ClusterCapacityUninterpretable instead of becoming an empty or
     # path-less list. Before this constant, the read reached callers with a nil
     # path, size and free space for every volume on every cluster.
+    # `:cluster_role_failback` means the clustered-role contract carries the
+    # measured high-availability failback surface: the role read reports
+    # auto_failback_type and the failback window (with the model reading the
+    # measured 4294967295 sentinel as no window), and
+    # set_cluster_virtual_machine_role_auto_failback writes the one HA group
+    # property this build takes — automatic failback — through a script that
+    # identifies the group before touching it and proves the write by a fresh
+    # read-back, raising RolePropertyWriteRefused or ClusterRoleNotFound
+    # instead of reporting a setting the cluster never accepted.
     # A caller on an older gem sees no constant here and must treat every fork
     # behaviour as absent.
     CAPABILITIES = %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene
-                      input_hardening cluster_capacity_projection].freeze
+                      input_hardening cluster_capacity_projection cluster_role_failback].freeze
 
     service(:compute, 'Compute')
 
