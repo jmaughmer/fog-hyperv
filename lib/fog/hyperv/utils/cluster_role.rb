@@ -225,6 +225,12 @@ module Fog
             }
             $answer['roles'] = @(foreach ($group in $groups) {
               $vmIdText = if ($group.GroupType -eq 'VirtualMachine') { Get-FogHypervGroupVmId $group } else { [string]$group.VmID }
+              $preferredOwners = $null
+              try {
+                $preferredOwners = @(Get-ClusterOwnerNode -Group $group | ForEach-Object { @($_.OwnerNodes) | ForEach-Object { [string]$_.Name } })
+              } catch {
+                $preferredOwners = $null
+              }
               [ordered]@{
                 name = [string]$group.Name
                 groupType = [string]$group.GroupType
@@ -236,6 +242,7 @@ module Fog
                 autoFailbackType = $group.AutoFailbackType
                 failbackWindowStart = $group.FailbackWindowStart
                 failbackWindowEnd = $group.FailbackWindowEnd
+                preferredNodeNames = $preferredOwners
               }
             })
             ConvertTo-Json -Compress -Depth 4 -InputObject $answer
@@ -321,9 +328,14 @@ module Fog
         # The one shell a failback write runs. The measured contract (evidence
         # section 60, HV-CL01, Server 2025 / cluster build 26100): the property
         # is $group.AutoFailbackType — 0 off, 1 on — and it is the ONE HA group
-        # property this build takes as a write on a VM-role group; Priority and
+        # property this build takes as a write THROUGH THIS SCRIPT; Priority and
         # the failback window answer the same assignment with "Unable to save
-        # property changes", and preferred owners silently no-op.
+        # property changes". What this script first recorded as "preferred owners
+        # silently no-op" was a parameter-binding death on the non-existent
+        # -Nodes parameter, not a finding: preferred owners ARE writable via
+        # Set-ClusterOwnerNode -Owners (evidence section 76), and that write
+        # surface rides the later owner-node contract, not this failback-only
+        # script.
         #
         # The same triple identification the removal script demands before it
         # deletes runs before anything is written — exactly one group for the
@@ -465,7 +477,18 @@ module Fog
         #   with virtual_machine_id mirrored from vm_id: the script resolves the
         #   id through VM_ID_HELPER (the direct VmID property is NULL on real
         #   machine-role groups), while the model — and the plugin behind it —
-        #   reads the attribute named virtual_machine_id.
+        #   reads the attribute named virtual_machine_id;
+        # - every row carries preferredNodeNames from Get-ClusterOwnerNode asked
+        #   of that one group (the measured source on this build: PreferredNodeNames
+        #   is NULL on the group object itself, and the unfiltered cmdlet answers
+        #   nothing at all — evidence section 76). The unset cluster answers an
+        #   empty list, which is the POSITIVE "no restricted list, any node may
+        #   own" state, so a failed per-group owner read stays $null rather than
+        #   collapsing into that []: "unknown" and "unrestricted" are different
+        #   claims. The field is display vocabulary either way — it can neither
+        #   license nor veto destroying a machine's disks, and one group's owner
+        #   read failing degrades that row's field, never the disk-authoritative
+        #   answer itself.
         #
         # @param stdout [String] the raw stdout of the read script
         # @param cluster_name [String,nil] cluster the caller expects, if it knows

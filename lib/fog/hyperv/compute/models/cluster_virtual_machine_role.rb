@@ -56,6 +56,17 @@ class Fog::Hyperv::Compute
     #   @return [Integer,nil] where the failback window closes, same sentinel
     #     rule as failback_window_start
     attribute :failback_window_end, type: :integer
+    # @!attribute [r] preferred_node_names
+    #   @return [Array<String>,nil] the cluster's preferred owners for this role:
+    #     the nodes it PREFERS to run the machine on, asked group by group of
+    #     Get-ClusterOwnerNode (measured source on this build — evidence
+    #     section 76; the group's own PreferredNodeNames property is NULL). The
+    #     three states are different claims and are kept apart verbatim: a list
+    #     of names is a restricted preference, [] is the cluster's positive "no
+    #     restricted list — any node may own" answer, and nil means this group's
+    #     owner list could not be read — which is NOT "no restriction". Labelling
+    #     them is display vocabulary; this side only carries what was answered.
+    attribute :preferred_node_names
 
     # The value Get-ClusterGroup answers for both ends of a cluster's failback
     # window when no window is set (measured on HV-CL01, evidence section 60:

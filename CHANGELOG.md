@@ -1,5 +1,17 @@
 ## Unreleased
 
+- Carry the cluster's preferred owners into the clustered-role read:
+  build_read_script now asks Get-ClusterOwnerNode of every matched group and
+  rows come back with preferredNodeNames, mirrored by the model's
+  preferred_node_names — the measured source for this state on HV-CL01
+  (evidence section 76), because the group object's own PreferredNodeNames
+  property is NULL and the unfiltered cmdlet answers nothing at all. The
+  three arrived states stay distinct: a list of names is a restricted
+  preference, [] is the cluster's own positive "no restricted list — any
+  node may own" answer, and nil means that group's owner read failed, which
+  is not "no restriction". CAPABILITIES gains cluster_role_owner_nodes;
+  the build's Set-ClusterOwnerNode -Owners write surface is measured but
+  not exposed in this release
 - Recognise hyperv_operation_timeout, hyperv_receive_timeout,
   hyperv_retry_limit and hyperv_retry_delay and pass them to the WinRM
   connection: the gem's waits describe a local network, and a high-latency or
