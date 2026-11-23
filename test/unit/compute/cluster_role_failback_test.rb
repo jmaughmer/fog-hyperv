@@ -87,37 +87,49 @@ class UnitClusterRoleFailbackTest < Minitest::Test
     end
 
     assert_equal 0, role.auto_failback_type
+    # Exactly false: refute would also pass on nil ("the field never arrived"),
+    # which is a different claim than the cluster having answered 0.
+    # rubocop:disable Minitest/RefuteFalse
     assert_equal false, role.auto_failback
+    # rubocop:enable Minitest/RefuteFalse
     # 4294967295..4294967295 is the measured answer of a cluster with no
     # failback window; it means "off", not "a window at minute 4.2 billion".
     assert_nil role.failback_window
   end
 
+  # rubocop:disable Minitest/MultipleAssertions
   def test_the_model_reads_the_measured_sentinel_and_the_reported_pair
     on = Fog::Hyperv::Compute::ClusterVirtualMachineRole.new(
       auto_failback_type: 1, failback_window_start: 1500, failback_window_end: 2400
     )
-    assert_equal true, on.auto_failback
+
+    assert on.auto_failback
     assert_equal [1500, 2400], on.failback_window
 
     off = Fog::Hyperv::Compute::ClusterVirtualMachineRole.new(
       auto_failback_type: 0, failback_window_start: 4_294_967_295, failback_window_end: 4_294_967_295
     )
+
+    # rubocop:disable Minitest/RefuteFalse
     assert_equal false, off.auto_failback
+    # rubocop:enable Minitest/RefuteFalse
     assert_nil off.failback_window
 
     # A role that never reported the property answers "I do not know", not
     # "failback is off" — the same refusal-not-guessing rule as the reads.
     unknown = Fog::Hyperv::Compute::ClusterVirtualMachineRole.new(name: 'Virtual Machine x')
+
     assert_nil unknown.auto_failback
     assert_nil unknown.failback_window
   end
+  # rubocop:enable Minitest/MultipleAssertions
 
   # -- the write script ---------------------------------------------------------
 
   # Nothing is written on a name this side has not identified: the same triple
   # assertion the removal script makes before deleting, because the property is
-  # set on whatever group the filter matched.
+  # set on whatever group the filter matched. One script, checked whole.
+  # rubocop:disable Minitest/MultipleAssertions
   def test_the_failback_script_identifies_the_group_before_writing_anything
     script = subject.build_failback_script(id: GUID, enabled: true)
 
@@ -128,6 +140,7 @@ class UnitClusterRoleFailbackTest < Minitest::Test
     assert_includes script, "-ine '#{GUID}'"
     assert_includes script, '$group.AutoFailbackType = 1'
   end
+  # rubocop:enable Minitest/MultipleAssertions
 
   def test_false_means_the_type_the_cluster_uses_for_off
     script = subject.build_failback_script(id: GUID, enabled: false)
@@ -139,6 +152,7 @@ class UnitClusterRoleFailbackTest < Minitest::Test
   # The write is proven by a fresh read, not by the object that was pushed:
   # a property set can answer success and not stick (the Priority refusal was
   # only loud because it threw; a silent no-stick must not read as applied).
+  # rubocop:disable Minitest/MultipleAssertions
   def test_the_failback_script_proves_the_write_by_reading_it_back
     script = subject.build_failback_script(id: GUID, enabled: true)
 
@@ -147,6 +161,7 @@ class UnitClusterRoleFailbackTest < Minitest::Test
     assert_includes script, 'applied'
     assert_includes script, 'refused'
   end
+  # rubocop:enable Minitest/MultipleAssertions
 
   # PSArgument from the -VMId leg is the measured "no virtual machine has this
   # id"; it becomes a named no-role verdict, not an exception shape the parser
@@ -179,8 +194,8 @@ class UnitClusterRoleFailbackTest < Minitest::Test
   # -- the verdict parser -------------------------------------------------------
 
   def test_an_applied_verdict_is_the_only_success
-    assert_equal true, subject.parse_failback_write(verdict(result: 'applied', actual: 1), wanted: 1)
-    assert_equal true, subject.parse_failback_write(verdict(result: 'applied', wanted: 0, actual: 0), wanted: 0)
+    assert subject.parse_failback_write(verdict(result: 'applied', actual: 1), wanted: 1)
+    assert subject.parse_failback_write(verdict(result: 'applied', wanted: 0, actual: 0), wanted: 0)
   end
 
   # The measured refusal text rides into the raised error so the plugin can
@@ -227,19 +242,23 @@ class UnitClusterRoleFailbackTest < Minitest::Test
 
   # -- the requests --------------------------------------------------------------
 
+  # rubocop:disable Minitest/MultipleAssertions
   def test_the_real_request_sends_the_script_to_the_writing_node
     @real.stdout_to_answer = verdict(result: 'applied', actual: 1)
 
-    assert_equal true, @real.set_cluster_virtual_machine_role_auto_failback(
+    assert @real.set_cluster_virtual_machine_role_auto_failback(
       id: GUID, auto_failback: true, computer_name: 'HV-NODE2'
     )
 
     assert_equal 1, @real.cmd_calls.size
+
     cmd, opts = @real.cmd_calls.first
+
     assert_includes cmd, '$group.AutoFailbackType = 1'
-    assert_equal true, opts[:_skip_json]
+    assert opts[:_skip_json]
     assert_equal 'HV-NODE2', opts[:_target_computer]
   end
+  # rubocop:enable Minitest/MultipleAssertions
 
   # The boolean is the whole contract; nil and truthy-lookalikes are refused
   # client-side because "auto_failback: nil" cannot mean both "off" and "not
@@ -271,11 +290,12 @@ class UnitClusterRoleFailbackTest < Minitest::Test
   # The mock mirrors the real request's answer shapes: the same guards fire, a
   # fixture machine answers true, and a machine the fixture has no role for
   # raises the same error the cluster's own miss would.
+  # rubocop:disable Minitest/MultipleAssertions
   def test_the_mocked_client_answers_the_same_contract
-    assert_equal true, @client.set_cluster_virtual_machine_role_auto_failback(
+    assert @client.set_cluster_virtual_machine_role_auto_failback(
       id: '416e49fd-28dd-413c-9743-aa3e69e4807d', auto_failback: true
     )
-    assert_equal true, @client.set_cluster_virtual_machine_role_auto_failback(
+    assert @client.set_cluster_virtual_machine_role_auto_failback(
       id: '416E49FD-28DD-413C-9743-AA3E69E4807D', auto_failback: false, computer_name: 'MOCK-HOST'
     )
     assert_raises(Fog::Hyperv::Errors::ClusterRoleNotFound) do
@@ -291,4 +311,5 @@ class UnitClusterRoleFailbackTest < Minitest::Test
       @client.set_cluster_virtual_machine_role_auto_failback(id: GUID, auto_failback: nil)
     end
   end
+  # rubocop:enable Minitest/MultipleAssertions
 end

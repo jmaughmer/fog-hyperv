@@ -311,7 +311,7 @@ module Fog
         # and a truthy string like 'false' would turn failback OFF for a caller
         # who meant it ON. Raised client-side, before any wire traffic.
         def validate_failback_flag!(value)
-          return value if value == true || value == false
+          return value if [true, false].include?(value)
 
           raise ArgumentError,
                 "auto_failback must be exactly true or false; this is a write, and #{value.inspect} " \
@@ -433,8 +433,7 @@ module Fog
                   'the machine has no clustered role, so there is no high-availability setting to change'
           else
             raise Fog::Hyperv::Errors::RoleReadUninterpretable,
-                  "the clustered failback write answered a verdict this contract does not define " \
-                  "(#{payload[:result].inspect})"
+                  "the clustered failback write answered a verdict this contract does not define (#{payload[:result].inspect})"
           end
         end
 
