@@ -244,8 +244,9 @@ class UnitHostInputHardeningTest < Minitest::Test
     # PLG-22's runtime gate reads the five entries together and PLG-14's
     # capacity read rides the sixth, so the whole list is pinned exactly —
     # another behaviour has to be added here on purpose, not by accident.
+    # PLG-30's failback write is that seventh, added on purpose.
     assert_equal %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene
-                    input_hardening cluster_capacity_projection],
+                    input_hardening cluster_capacity_projection cluster_role_failback],
                  Fog::Hyperv::CAPABILITIES
   end
 

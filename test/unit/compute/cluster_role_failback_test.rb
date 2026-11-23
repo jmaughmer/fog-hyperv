@@ -86,7 +86,7 @@ class UnitClusterRoleFailbackTest < Minitest::Test
       r.virtual_machine_id.to_s.casecmp('416e49fd-28dd-413c-9743-aa3e69e4807d').zero?
     end
 
-    assert_equal 0, role[:auto_failback_type]
+    assert_equal 0, role.auto_failback_type
     assert_equal false, role.auto_failback
     # 4294967295..4294967295 is the measured answer of a cluster with no
     # failback window; it means "off", not "a window at minute 4.2 billion".
