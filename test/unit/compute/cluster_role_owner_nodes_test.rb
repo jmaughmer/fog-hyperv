@@ -109,7 +109,6 @@ class UnitClusterRoleOwnerNodesTest < Minitest::Test
 
   # No interpretation on this side: [] and nil are different claims about the
   # cluster and only the display layer is allowed to label them.
-  # rubocop:disable Minitest/MultipleAssertions
   def test_the_model_reports_preferred_node_names_verbatim
     restricted = Fog::Hyperv::Compute::ClusterVirtualMachineRole.new(preferred_node_names: %w[hv-node1])
     unset = Fog::Hyperv::Compute::ClusterVirtualMachineRole.new(preferred_node_names: [])
@@ -119,13 +118,11 @@ class UnitClusterRoleOwnerNodesTest < Minitest::Test
     assert_equal [], unset.preferred_node_names
     assert_nil unknown.preferred_node_names
   end
-  # rubocop:enable Minitest/MultipleAssertions
 
   # -- the fixture mirrors the real read's answer shapes -------------------------
 
   # mockvm1 carries the unset [] and mockvm2 a restricted one-node list, so
   # both real states have a mocked counterpart a plugin test can lean on.
-  # rubocop:disable Minitest/MultipleAssertions
   def test_a_mocked_role_reports_its_owner_list
     roles = @client.clusters.first.roles
     first = roles.detect { |r| r.virtual_machine_id.to_s.casecmp(MOCKVM1).zero? }
@@ -134,5 +131,4 @@ class UnitClusterRoleOwnerNodesTest < Minitest::Test
     assert_equal [], first.preferred_node_names
     assert_equal ['mock-node2'], second.preferred_node_names
   end
-  # rubocop:enable Minitest/MultipleAssertions
 end
