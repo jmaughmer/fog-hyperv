@@ -7,10 +7,13 @@ require 'fog/hyperv/compute/requests/set_cluster_virtual_machine_role_auto_failb
 # PLG-30: the one per-role High Availability setting this cluster build accepts
 # as a WRITE is automatic failback — measured on HV-CL01 (evidence section 60)
 # by setting $group.AutoFailbackType, reading it back, and restoring it, twice.
-# Priority, the failback window, and preferred owners are refused or no-op on
-# VM-role groups under the bound identity, so they stay read-only here, and
-# this whole contract — script, verdict, errors — exists to make even the one
-# writable knob refuse rather than pretend.
+# Priority and the failback window are refused on VM-role groups under the
+# bound identity, so they stay read-only here; preferred owners were recorded
+# here as a silent no-op too, but that was a parameter-binding death on the
+# non-existent -Nodes parameter — with -Owners the write sticks (§76) — and the
+# owner-list contract PLG-31b added reads it without exposing that write.
+# Either way this whole contract — script, verdict, errors — exists to make
+# even the one writable knob refuse rather than pretend.
 class UnitClusterRoleFailbackTest < Minitest::Test
   GUID = 'e8f37f42-5b1a-4c2d-9e6f-0a1b2c3d4e5f'
 
