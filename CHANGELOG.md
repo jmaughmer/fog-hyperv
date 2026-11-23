@@ -65,6 +65,16 @@
   ClusterVirtualMachineRole per clustered machine with its OwnerNode, because
   Get-VM answers only for the node it ran on and loses sight of a machine the
   moment its role fails over
+- Read and write the one high-availability setting a clustered virtual machine
+  actually takes: the role read now carries auto_failback (and the failback
+  window, with the measured 4294967295 sentinel read as "no window"), and
+  set_cluster_virtual_machine_role_auto_failback writes automatic failback
+  through a shell that identifies the group before touching it and proves the
+  write with a fresh read-back — a cluster that answers "Unable to save
+  property changes" now raises RolePropertyWriteRefused carrying its own words
+  instead of the setting being reported as applied, and an unclustered machine
+  answers ClusterRoleNotFound. Priority and the window refuse as writes on the
+  measured build, so they stay read fields
 - Read a cluster's shared volumes and the disks left to make more from:
   Cluster#shared_volumes and #available_disks, which is what placement onto
   cluster storage has to know before it can offer a destination
