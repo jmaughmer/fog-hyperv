@@ -31,13 +31,16 @@ class Fog::Hyperv::Compute
     # Refusals before any traffic: a path that is not one literal absolute
     # location (the same refusers remove_file answers with), a URL that is not
     # http(s), a sha256 that is not 64 hex digits, a size that is not a positive
-    # Integer. Answers the pulled byte count; a stdout the script could not have
-    # printed raises PullVerdictUninterpretable rather than being read as a
-    # successful pull.
+    # Integer. The signature names the five inputs the script reads and takes no
+    # catch-all: an unknown keyword here is a caller typo, and swallowing one —
+    # computer_nmae: say — would pull the ISO on the default endpoint under a
+    # caller that believed it had named a host. Answers the pulled byte count;
+    # a stdout the script could not have printed raises
+    # PullVerdictUninterpretable rather than being read as a successful pull.
     #
     # No Mock, like remove_file: the answer is a marker the script prints, not a
     # drive shape a fixture could carry.
-    def fetch_url_to_path(url:, path:, sha256:, size:, computer_name: nil, **_options)
+    def fetch_url_to_path(url:, path:, sha256:, size:, computer_name: nil)
       raise ArgumentError, "url must be an http(s) URL the host can reach; got #{url.inspect}" unless url.to_s.match?(%r{\Ahttps?://})
 
       dest = Fog::Hyperv::Utils::ContainedPath.validate_contained_path!(path, __method__)

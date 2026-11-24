@@ -22,8 +22,11 @@
   while the file is still <path>.part, and only then Move-Item -Force onto the final
   name, so a truncated or redirected body never wears the name a later step mounts.
   Failed checks remove the .part and rethrow; any stdout other than the script's
-  PULLED=<bytes> raises PullVerdictUninterpretable. Declares the :file_pull
-  capability.
+  PULLED=<bytes> raises PullVerdictUninterpretable. The signature names the five
+  keywords the script reads and takes no catch-all, so an unknown or misspelled
+  keyword (computer_nmae:) raises ArgumentError at the call instead of being
+  swallowed and the pull running against the default endpoint.
+  Declares the :file_pull capability.
 
 - Eject one DVD drive by Id as its own idempotent request: eject_vm_dvd_drive runs
   Set-VMDvdDrive -Path $null -Passthru against the named drive with no media or

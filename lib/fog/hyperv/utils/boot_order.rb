@@ -1,5 +1,11 @@
 # frozen_string_literal: true
 
+# rubocop:disable Metrics/ModuleLength
+
+# file-scoped for the same reason winrm.rb carries it: this module's length is
+# the size of the PowerShell it renders, and the fork's other script-builder
+# utils (cluster_capacity, cluster_role) already live over the limit
+
 module Fog::Hyperv
   module Utils
     # The UEFI boot-order scripts behind get_vm_boot_order / set_vm_boot_order.
@@ -160,9 +166,24 @@ module Fog::Hyperv
         # Reorder in one script: capture, compute, write once, read back, restore
         # and raise on mismatch. requests is the caller's sequence, already
         # validated by the request: [{Class:, Id: nil-or-string}, ...] in the
-        # desired order.
+        # desired order. The script is assembled from two heredocs — the
+        # compute-and-write half and the verify-and-restore half — concatenated
+        # directly, so what reaches the host is one script, exactly as before the
+        # split; the seam is where the write stops being the caller's ask and
+        # starts being the host's answer.
         def build_set_script(requests)
           json = Fog::JSON.encode(requests).gsub("'", "''")
+
+          "#{write_half(json)}#{verify_half}"
+        end
+
+        # Capture the current order, compute the complete expected sequence
+        # (requested classes first, in the requested order — fetched devices when
+        # the order does not carry the class yet, since Set-VMFirmware takes the
+        # whole order and a requested device missing from it must still land —
+        # then every entry the request did not consume, in place), and write it
+        # in ONE Set-VMFirmware.
+        def write_half(json)
           <<~SCRIPT
             $fogFw = $VM | Get-VMFirmware
             #{identity_functions}
@@ -206,6 +227,21 @@ module Fog::Hyperv
               }
             }
             $VM | Set-VMFirmware -BootOrder $fogExp.ToArray()
+          SCRIPT
+        end
+
+        # Read the full ordered identity sequence back — guarded, because a
+        # read-back that throws after a successful write must still restore —
+        # and on any mismatch restore the captured order best-effort (guarded
+        # too: a restore that itself throws reports inside the mismatch error
+        # rather than replacing it) and raise naming both facts. The write above
+        # is deliberately NOT guarded: if that single Set-VMFirmware throws, the
+        # error reaches the caller raw, because whether a refused write leaves
+        # the order intact is a host fact this project has never measured, and a
+        # restore invented around an unmeasured atomicity could itself be the
+        # thing that reorders the VM.
+        def verify_half
+          <<~SCRIPT
             $fogBoot = @()
             $fogReadFail = $null
             try { $fogBoot = @(($VM | Get-VMFirmware).BootOrder) } catch { $fogReadFail = $_.Exception.Message }
@@ -226,3 +262,4 @@ module Fog::Hyperv
     end
   end
 end
+# rubocop:enable Metrics/ModuleLength
