@@ -52,7 +52,7 @@ class UnitRequestRegistrationTest < Minitest::Test
   end
 
   def declared_requests
-    Fog::Hyperv::Compute.requests.map { |scope, name| name.to_sym }
+    Fog::Hyperv::Compute.requests.map { |_scope, name| name.to_sym }
   end
 
   def test_service_declares_every_request_file_this_repo_added
@@ -119,7 +119,7 @@ class UnitRequestRegistrationTest < Minitest::Test
     RUBY
     out, err, status = Open3.capture3(RbConfig.ruby, '-Ilib', '-e', script)
 
-    assert status.success?, "clean process failed to build the client: #{err}"
+    assert_predicate status, :success?, "clean process failed to build the client: #{err}"
     assert_empty out.strip,
                  'a freshly built client never gained these methods: require_requests_and_mock ' \
                  'only requires requests the service declares, and these files were never declared'
