@@ -114,7 +114,7 @@ class UnitEjectVmDvdDriveTest < Minitest::Test
 
   # --- the Mock -----------------------------------------------------------------
 
-  def test_under_a_mock_the_eject_answers_the_fixture_drive_with_no_media
+  def test_under_a_mock_the_eject_answers_the_fixture_drive_unchanged
     Fog.mock!
     client = Fog::Compute.new(provider: 'hyperv', hyperv_username: 'test')
 
@@ -123,7 +123,10 @@ class UnitEjectVmDvdDriveTest < Minitest::Test
 
     ejected = client.eject_vm_dvd_drive(vm_id: FIXTURE_VM_ID, id: FIXTURE_DRIVE_ID)
 
-    assert_nil ejected[:path], 'the eject answer must show the media gone, not the old file'
+    # The lab measured the real Passthru answer as the drive BEFORE the change,
+    # and the fixture drive holds no media, so that is the shape this answers.
+    # A caller confirms the eject with a fresh read, never with this answer.
+    assert_nil ejected[:path], 'the answer is the pre-change drive, so it cannot confirm the eject'
     assert_equal FIXTURE_DRIVE_ID, ejected[:id]
   ensure
     Fog.unmock!
