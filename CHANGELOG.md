@@ -1,5 +1,22 @@
 ## Unreleased
 
+- Read and reorder a Gen2 VM's UEFI boot order without losing what was not asked
+  for: get_vm_boot_order answers the firmware's entries as an ordered list (position,
+  BootType, the Device rendering, the device Id, the File entry's FirmwarePath), and
+  set_vm_boot_order takes a sequence of class names — optionally one DVDDrive named by
+  Id — and writes the complete expected order in ONE Set-VMFirmware. Spike 0.4 measured
+  why the obvious shapes fail: a subset write silently deleted the lab VM's own hard
+  drive from its boot order, and a retry that re-inserts a device already present
+  duplicates it. So the script classifies entries by BootType first and the Device
+  rendering second (a File entry's Device is null, and a classifier keyed on the
+  rendering alone puts the installer's own File entries in no class at all), matches a
+  requested drive by comparing its Id against each entry's Device.Id rather than by
+  object reference (a freshly fetched device object never reference-equals a boot entry's
+  Device), appends every entry it did not consume, and — if the read-back order is not
+  what it wrote — restores the captured original and raises rather than leaving the VM
+  half-reordered. Unknown or repeated classes, an empty order, and a non-DVD class named
+  by Id refuse before any traffic.
+
 - Answer the DVD-drive requests under Fog.mock!, so a plugin can drive one drive
   through add, attach, read, eject and remove without a Hyper-V host: get_vm_dvd_drive's
   Mock read a local named args that the method never defines (it takes **options), which
