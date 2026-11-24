@@ -21,7 +21,7 @@
 - Read and reorder a Gen2 VM's UEFI boot order without losing what was not asked
   for: get_vm_boot_order answers the firmware's entries as an ordered list (position,
   BootType, the Device rendering, the device Id, the File entry's FirmwarePath), and
-  set_vm_boot_order takes a sequence of class names — optionally one DVDDrive named by
+  set_vm_boot_order takes a sequence of class names — optionally one DvdDrive named by
   Id — and writes the complete expected order in ONE Set-VMFirmware. Spike 0.4 measured
   why the obvious shapes fail: a subset write silently deleted the lab VM's own hard
   drive from its boot order, and a retry that re-inserts a device already present

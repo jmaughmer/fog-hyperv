@@ -8,16 +8,16 @@ class Fog::Hyperv::Compute
     # keeping every other entry that was already in it, in one write.
     #
     #   set_vm_boot_order(vm_id: '1c51c4ee-...',
-    #                     order: ['HardDiskDrive', { 'DVDDrive' => drive_id }, 'VMNetworkAdapter'])
+    #                     order: ['HardDiskDrive', { 'DvdDrive' => drive_id }, 'VMNetworkAdapter'])
     #
     # Each element is a class name from Fog::Hyperv::Utils::BootOrder::REQUESTABLE
-    # or, for DVDDrive only, a Class => Id pair naming one drive. A class names
+    # or, for DvdDrive only, a Class => Id pair naming one drive. A class names
     # its whole group: every entry of that class moves together, relative order
     # preserved, because an order that lists one of two NICs drops the others
     # out of the firmware's list entirely — measured, spike 0.4, where a subset
     # write deleted this lab VM's hard drive from its own boot order.
     # HardDiskDrive and VMNetworkAdapter therefore refuse an Id (which of the
-    # group is "the" one is a caller decision fog will not guess); DVDDrive is
+    # group is "the" one is a caller decision fog will not guess); DvdDrive is
     # the class the bootdisk seam addresses through a specific drive.
     #
     # The script behind this reads the current order, computes the full
@@ -34,7 +34,7 @@ class Fog::Hyperv::Compute
     #
     # Refusals before any traffic: an unknown or repeated class, an empty
     # order, a non-DVD class named by Id. Refusals from the script: a named
-    # DVDDrive the VM does not have, or a requested class with no device on the
+    # DvdDrive the VM does not have, or a requested class with no device on the
     # VM to place. A Gen1 VM errors from Get-VMFirmware itself. Answers the new
     # order in get_vm_boot_order's shape. No Mock, like remove_file.
     def set_vm_boot_order(vm_id:, order:, computer_name: nil, **_options)

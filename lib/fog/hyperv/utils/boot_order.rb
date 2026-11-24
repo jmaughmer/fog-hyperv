@@ -20,11 +20,16 @@ module Fog::Hyperv
     # read-back disagrees, so a failed attempt never leaves the VM half-reordered.
     module BootOrder
       # Classes a caller may request. They are the tokens the device rendering
-      # shows ("HardDiskDrive (Name = ...)"), measured in spike 0.4 for hard
-      # drives and network adapters; DVDDrive joins that set with the PR-1 lab
-      # measurement. File and EFI entries are preserved but not requestable: a
+      # shows ("HardDiskDrive (Name = ...)"), measured for hard drives and
+      # network adapters in spike 0.4, and the PR-1 lab measurement settled the
+      # third: a DVD boot entry renders as DvdDrive, NOT the cmdlet-family
+      # DVDDrive — the first write attempt asked for DVDDrive, matched no entry,
+      # and double-listed the drive (fresh device + its unconsumed boot entry),
+      # which Set-VMFirmware refused with WMI's "Element not found" (0x80070490).
+      # A token that does not equal fog-class output is not a no-op; it is a
+      # duplicate. File and EFI entries are preserved but not requestable: a
       # File boot entry is a firmware path, not a device this API addresses.
-      REQUESTABLE = %w[HardDiskDrive DVDDrive VMNetworkAdapter].freeze
+      REQUESTABLE = %w[HardDiskDrive DvdDrive VMNetworkAdapter].freeze
 
       # Decode a script's own ConvertTo-Json body the way the transport decodes
       # the answers it parses: uncamelized, symbol-keyed rows. The boot-order
@@ -41,7 +46,7 @@ module Fog::Hyperv
       # Validate and normalize a caller's boot-order request before any traffic:
       # what the host could not honour anyway should not reach the host. The
       # shape rules mirror the script's: whole groups (a named Id only for
-      # DVDDrive), one mention of a class (a repeat would reorder the first
+      # DvdDrive), one mention of a class (a repeat would reorder the first
       # group it matched and then insert a second copy), and at least one entry
       # (an empty order would write the VM's boot order down to nothing).
       def self.normalize(order)
@@ -69,8 +74,8 @@ module Fog::Hyperv
         raise ArgumentError, "order repeats #{repeated[0]}" if repeated
 
         entries.map do |klass, id|
-          if !id.nil? && klass != 'DVDDrive'
-            raise ArgumentError, "#{klass} moves as a whole group and cannot be named by Id; only DVDDrive can"
+          if !id.nil? && klass != 'DvdDrive'
+            raise ArgumentError, "#{klass} moves as a whole group and cannot be named by Id; only DvdDrive can"
           end
 
           { 'Class' => klass, 'Id' => id }
@@ -157,10 +162,10 @@ module Fog::Hyperv
               })
               if ($fogMatch.Count -eq 0) {
                 if ($fogCls -eq 'HardDiskDrive') { $fogDevs = @($VM | Get-VMHardDiskDrive) }
-                elseif ($fogCls -eq 'DVDDrive') {
+                elseif ($fogCls -eq 'DvdDrive') {
                   if ($fogWanted -ne '') {
                     $fogDevs = @($VM | Get-VMDvdDrive | Where-Object { $_.Id -eq $fogWanted })
-                    if ($fogDevs.Count -eq 0) { throw "set_vm_boot_order refuses: DVDDrive $fogWanted is not attached to this VM" }
+                    if ($fogDevs.Count -eq 0) { throw "set_vm_boot_order refuses: DvdDrive $fogWanted is not attached to this VM" }
                   } else {
                     $fogDevs = @($VM | Get-VMDvdDrive)
                   }
