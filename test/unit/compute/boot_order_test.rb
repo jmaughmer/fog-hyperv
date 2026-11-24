@@ -17,9 +17,12 @@ require 'fog/hyperv/compute/requests/set_vm_boot_order'
 #   Set-VMFirmware, read back the full ordered identity sequence, and on any mismatch
 #   restore the captured original and raise — never leave a half-reordered VM;
 #
-# classification keys on BootType FIRST (Drive/Network/File) and only then on the
-# device class rendered from the entry's Device, because a File entry has a null
-# Device and classifying on the rendering alone sees it as the empty class; and
+# classification keys on the device class rendered from the entry's Device FIRST
+# ("HardDiskDrive (...)", "VMNetworkAdapter (...)", "DvdDrive (...)") and falls
+# back to BootType only when that rendering is empty, because a NIC entry answers
+# BootType 'Network' — BootType-first never matched a requested VMNetworkAdapter,
+# double-listed the adapter, and the host refused (PR-1 lab measurement); a File
+# entry has a null Device and needs the BootType fallback so it is not dropped; and
 # move-if-present matches the requested device by Id against the entry's Device.Id,
 # never by object reference, because a freshly fetched device object never
 # reference-equals the Device inside a boot entry (that is how a retry duplicates).
@@ -105,14 +108,22 @@ class UnitBootOrderTest < Minitest::Test
                     'device object; -FirstBootDevice would be a second mutation of the same thing'
   end
 
-  def test_classification_keys_on_boottype_before_the_device_rendering
-    # F5: a File boot entry has a null Device, so its rendering is empty and a
-    # classifier keyed on the rendering alone puts it in no class — exactly the
-    # entries the installer adds and the contract must never drop.
+  def test_classification_keys_on_the_device_rendering_with_boottype_only_as_fallback
+    # F5 said a File entry has a null Device, so BootType must classify it — true.
+    # The PR-1 lab measurement showed the other half: a NIC boot entry answers
+    # BootType 'Network', and the only string carrying its class is the Device
+    # rendering "VMNetworkAdapter (Name = ...)". Keying on BootType first left
+    # that entry unconsumed, the fetch branch inserted the same adapter again,
+    # and Set-VMFirmware refused the duplicate with WMI Element not found
+    # (0x80070490) — twice on the real host, with both DVD spellings, which is
+    # how it was caught. The rendering is the primary key; BootType classifies
+    # only what renders empty.
     call_set
 
-    assert_match(/BootType.*Drive/m, script,
-                 'Drive entries must be identified by BootType, device class only within them')
+    assert_includes script, %q{$fogT = ("$($e.Device)" -split ' ')[0]},
+                    'the device rendering is the primary classification key: it is the only string naming the class'
+    assert_includes script, 'if ($fogT) { $fogT } else { "$($e.BootType)" }',
+                    'BootType is the fallback for entries with no Device rendering (File entries), not the primary key'
   end
 
   def test_move_if_present_matches_the_requested_device_by_id_not_by_reference
