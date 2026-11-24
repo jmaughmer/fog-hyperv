@@ -75,9 +75,29 @@ class UnitEjectVmDvdDriveTest < Minitest::Test
   def test_the_eject_writes_the_null_path_and_passes_the_drive_back
     call_eject
 
-    assert_equal ['$DVD | Set-VMDvdDrive', { passthru: true, path: nil }], commands[2],
+    assert_equal ['$DVD | Set-VMDvdDrive', { _always_include: %i[path], passthru: true, path: nil }],
+                 commands[2],
                  'the eject is exactly -Path $null -Passthru: the null is the eject, the ' \
                  'passthru is how the caller reads its own work'
+  end
+
+  def test_the_rendered_eject_call_sends_path_null_itself
+    # The lab measurement caught the transport dropping this: run_cmdlist's unit
+    # shape records args without rendering them, so a request whose whole verb is
+    # a nil argument stayed green while the real host got Set-VMDvdDrive with no
+    # Path at all and answered the drive still mounted. _always_include is what
+    # carries a deliberate nil through the arg filter and into the JSON parameter
+    # round-trip the fork renders calls through — from there ConvertFrom-Json
+    # materialises it as a $null-valued hashtable entry and the @Args splat binds
+    # it as -Path $null. This assertion renders, because only the rendered call
+    # is what the host sees.
+    rendered = @client.send(:build_pscall, '$DVD | Set-VMDvdDrive',
+                            _always_include: %i[path], passthru: true, path: nil, _ps_version: 5).join("\n")
+
+    assert_includes rendered, '"Path":null',
+                    'a nil argument the caller asked to always include must survive into the rendered parameters'
+    assert_includes rendered, 'Set-VMDvdDrive @'
+    assert_includes rendered, '"Passthru":true'
   end
 
   def test_the_eject_carries_no_existence_guard_so_a_retry_is_a_no_op
