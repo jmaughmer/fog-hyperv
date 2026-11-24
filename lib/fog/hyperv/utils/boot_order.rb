@@ -22,13 +22,17 @@ module Fog::Hyperv
       # Classes a caller may request. They are the tokens the device rendering
       # shows ("HardDiskDrive (Name = ...)"), measured for hard drives and
       # network adapters in spike 0.4, and the PR-1 lab measurement settled the
-      # third: a DVD boot entry renders as DvdDrive, NOT the cmdlet-family
-      # DVDDrive — the first write attempt asked for DVDDrive, matched no entry,
-      # and double-listed the drive (fresh device + its unconsumed boot entry),
-      # which Set-VMFirmware refused with WMI's "Element not found" (0x80070490).
-      # A token that does not equal fog-class output is not a no-op; it is a
-      # duplicate. File and EFI entries are preserved but not requestable: a
-      # File boot entry is a firmware path, not a device this API addresses.
+      # third: a DVD boot entry renders its Device as DvdDrive, NOT the
+      # cmdlet-family DVDDrive. The measurement also caught the classifier: a
+      # NIC entry answers BootType 'Network', so a classifier keyed on BootType
+      # first never matched the requested VMNetworkAdapter, the fetch branch
+      # added the same adapter again, and Set-VMFirmware refused the duplicate
+      # with WMI's Element not found (0x80070490) — on the host, twice. A fog
+      # class token is what fog-class prints, and fog-class keys on the Device
+      # rendering because it is the only string naming the class; a token that
+      # does not equal fog-class output is not a no-op, it is a duplicate. File
+      # and EFI entries are preserved but not requestable: a File boot entry is
+      # a firmware path, not a device this API addresses.
       REQUESTABLE = %w[HardDiskDrive DvdDrive VMNetworkAdapter].freeze
 
       # Decode a script's own ConvertTo-Json body the way the transport decodes
@@ -93,7 +97,8 @@ module Fog::Hyperv
             function fog-class {
               param($e)
               if ($e.PSObject.Properties.Name -contains 'BootType') {
-                if ($e.BootType -eq 'Drive') { ("$($e.Device)" -split ' ')[0] } else { "$($e.BootType)" }
+                $fogT = ("$($e.Device)" -split ' ')[0]
+                if ($fogT) { $fogT } else { "$($e.BootType)" }
               } else {
                 "$($e)"
               }

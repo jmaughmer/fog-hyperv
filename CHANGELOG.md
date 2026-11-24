@@ -25,9 +25,12 @@
   Id — and writes the complete expected order in ONE Set-VMFirmware. Spike 0.4 measured
   why the obvious shapes fail: a subset write silently deleted the lab VM's own hard
   drive from its boot order, and a retry that re-inserts a device already present
-  duplicates it. So the script classifies entries by BootType first and the Device
-  rendering second (a File entry's Device is null, and a classifier keyed on the
-  rendering alone puts the installer's own File entries in no class at all), matches a
+  duplicates it. So the script classifies entries by the Device rendering first and
+  BootType only as the fallback (the PR-1 lab measurement caught the first version
+  of this rule inverted: a NIC entry answers BootType 'Network', so BootType-first
+  never matched a requested VMNetworkAdapter, the fetch branch added the same adapter
+  a second time, and the host refused the duplicate; a File entry is the case that
+  needs the fallback, its Device being null), matches a
   requested drive by comparing its Id against each entry's Device.Id rather than by
   object reference (a freshly fetched device object never reference-equals a boot entry's
   Device), appends every entry it did not consume, and — if the read-back order is not
