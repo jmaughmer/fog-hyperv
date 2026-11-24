@@ -499,7 +499,13 @@ module Fog
         # cluster is measured to return the names it was given but is not
         # measured to preserve their case or order. A Set that throws (with
         # ErrorActionPreference Stop even a non-terminating failure lands in the
-        # catch) answers 'refused' carrying the cluster's own words.
+        # catch) answers 'refused' carrying the cluster's own words. That
+        # comparison rides INSIDE the if parentheses: Windows PowerShell 5.1
+        # closes an if condition at the first unmatched ')', so `if ((A) -join
+        # '|') -eq (B) {` reads to it as `if (A) -eq (B) {` — measured on the
+        # lab node through the plugin's own path (production.log 99f1679a),
+        # where that shape failed to parse, printed nothing, and still exited 0
+        # with $? left at true.
         #
         # The only Ruby interpolations are the validated GUID and the
         # host-shape-validated names; every value the cluster itself produced
@@ -529,7 +535,10 @@ module Fog
                 Set-ClusterOwnerNode -Group $group -Owners #{owners_literal}
                 $readback = @(Get-ClusterOwnerNode -Group $group | ForEach-Object { @($_.OwnerNodes) | ForEach-Object { [string]$_.Name } })
                 $answer['actual'] = $readback
-                $answer['result'] = if ((@($readback | ForEach-Object { $_.ToLowerInvariant() }) | Sort-Object) -join '|') -eq ((@($wanted | ForEach-Object { $_.ToLowerInvariant() }) | Sort-Object) -join '|') { 'applied' } else { 'refused' }
+                # 5.1 closes an if condition at the first unmatched ')': the
+                # comparison has to be inside the parentheses, or the block
+                # lands after a comparison and the script never parses.
+                $answer['result'] = if (((@($readback | ForEach-Object { $_.ToLowerInvariant() }) | Sort-Object) -join '|') -eq ((@($wanted | ForEach-Object { $_.ToLowerInvariant() }) | Sort-Object) -join '|')) { 'applied' } else { 'refused' }
               } catch {
                 $answer['result'] = 'refused'
                 $answer['error'] = $_.Exception.Message
