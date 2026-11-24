@@ -1,5 +1,14 @@
 ## Unreleased
 
+- build_pscall now honors the _always_include promise it already made: a nil the
+  caller claimed survives the arg filter and rides the JSON parameter round-trip
+  the fork renders calls through, binding as -Name $null at the splat. It did not
+  used to: a later compact dropped every nil regardless of the claim, so a request
+  whose whole verb is a deliberate nil reached the host as a cmdlet call without
+  that parameter — the PR-1 lab measurement watched eject_vm_dvd_drive answer a
+  still-mounted drive, file still locked, because its -Path $null had been
+  compacted away. Unclaimed nils still drop exactly as before.
+
 - The host pulls, instead of the caller pushing: fetch_url_to_path has the
   Hyper-V host fetch an http(s) URL itself (spike 0.1 measured 148.9 MB/s against
   0.54-0.75 MB/s for a base64 push through WinRM) and puts the integrity checks the

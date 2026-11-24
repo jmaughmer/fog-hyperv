@@ -16,16 +16,21 @@ class Fog::Hyperv::Compute
     # rather than taking "the first drive", which is the same addressing rule
     # every other drive-scoped request here follows.
     #
-    # -Passthru, like set_vm_dvd_drive: the answer is the drive as it now is, with
-    # path nil. A drive Id the VM does not have raises from Get-VMDvdDrive -Id,
-    # which is the honest refusal: eject "this drive" on a VM that never had it
-    # is a caller error, not something to answer as already-done.
+    # -Passthru, like set_vm_dvd_drive: the answer is the drive as the host has
+    # it now. The _always_include is not decoration: a nil argument is what the
+    # transport's arg filter drops, and a dropped Path silently turns the eject
+    # into a no-op that passes the still-mounted drive back — the PR-1 lab
+    # measurement saw exactly that answer from the real host. Claiming the key
+    # carries the nil into the rendered parameters, where it binds as -Path $null,
+    # which is the eject. A drive Id the VM does not have raises from
+    # Get-VMDvdDrive -Id, which is the honest refusal: eject "this drive" on a VM
+    # that never had it is a caller error, not something to answer as already-done.
     def eject_vm_dvd_drive(id:, vm_id:, computer_name: nil, **_options)
       run_cmdlist(
         [
           ['$VM = Get-VM', { id: vm_id }],
           ['$DVD = $VM | Get-VMDvdDrive', { _by_id: id }],
-          ['$DVD | Set-VMDvdDrive', { passthru: true, path: nil }]
+          ['$DVD | Set-VMDvdDrive', { _always_include: %i[path], passthru: true, path: nil }]
         ],
         target_computer: computer_name
       )

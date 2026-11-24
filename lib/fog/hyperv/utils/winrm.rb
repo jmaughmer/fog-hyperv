@@ -209,7 +209,16 @@ module Fog::Hyperv::Utils::Winrm
     options.reject! do |k, v|
       !_always_include.include?(k) && (v.nil? || v.is_a?(FalseClass) || k.to_s.start_with?('_') || (v.is_a?(String) && v.empty?))
     end
-    options = Fog::Hyperv.camelize(options.compact)
+    # The compact here used to drop the very nils the reject above had just
+    # protected: _always_include said "send this key", compact said "nil never
+    # ships", and the host got a cmdlet call with the caller's verb missing
+    # (measured: an eject rendered without any Path answered the drive still
+    # mounted). Only nils _always_include did not claim are droppable now; a
+    # claimed nil reaches the JSON parameter round-trip Powershell.build_call
+    # renders through, where ConvertFrom-Json materialises it as a $null-valued
+    # hashtable entry and the @Args splat binds it as the -Name $null the caller
+    # asked for.
+    options = Fog::Hyperv.camelize(options.reject { |k, v| v.nil? && !_always_include.include?(k) })
 
     command += ' @Args' unless command.include? '@Args'
     # The merge and the router ride the rendered cmdlet call itself and go on
