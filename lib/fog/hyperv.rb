@@ -237,13 +237,23 @@ module Fog
     # the model answers preferred_node_names, where a list of names is a
     # restricted preference, [] is the cluster's own "no restricted list — any
     # node may own" answer, and nil means that group's owner read failed —
-    # unknown is not unrestricted. This release READS owners; the build's
-    # Set-ClusterOwnerNode -Owners write surface is not exposed here.
+    # unknown is not unrestricted.
+    # `:cluster_role_owner_nodes_write` means that owner list also has its
+    # measured WRITE surface exposed (evidence section 76: the cmdlet is
+    # Set-ClusterOwnerNode and its owner parameter is -Owners — the old
+    # "silently no-op" record was a -Nodes parameter-binding death; the write
+    # sticks; the clear is -Owners '' because -Owners @() and $null are refused
+    # and no Reset-ClusterOwnerNode exists): set_cluster_virtual_machine_role_-
+    # owner_nodes identifies the group by the machine GUID before touching it,
+    # maps the empty wanted list to that measured clear, and proves the write
+    # by a fresh Get-ClusterOwnerNode of the same group, raising
+    # RolePropertyWriteRefused or ClusterRoleNotFound instead of reporting a
+    # setting the cluster never accepted.
     # A caller on an older gem sees no constant here and must treat every fork
     # behaviour as absent.
     CAPABILITIES = %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene
                       input_hardening cluster_capacity_projection cluster_role_failback
-                      cluster_role_owner_nodes].freeze
+                      cluster_role_owner_nodes cluster_role_owner_nodes_write].freeze
 
     service(:compute, 'Compute')
 

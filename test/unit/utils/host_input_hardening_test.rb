@@ -245,9 +245,11 @@ class UnitHostInputHardeningTest < Minitest::Test
     # capacity read rides the sixth, so the whole list is pinned exactly —
     # another behaviour has to be added here on purpose, not by accident.
     # PLG-30's failback write is that seventh and PLG-31b's owner-list read
-    # is the eighth, both added on purpose.
+    # is the eighth, both added on purpose; PLG-36's owner-list write is the
+    # ninth, added on purpose too.
     assert_equal %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene
-                    input_hardening cluster_capacity_projection cluster_role_failback cluster_role_owner_nodes],
+                    input_hardening cluster_capacity_projection cluster_role_failback cluster_role_owner_nodes
+                    cluster_role_owner_nodes_write],
                  Fog::Hyperv::CAPABILITIES
   end
 
