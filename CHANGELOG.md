@@ -7,7 +7,12 @@
   whose whole verb is a deliberate nil reached the host as a cmdlet call without
   that parameter — the PR-1 lab measurement watched eject_vm_dvd_drive answer a
   still-mounted drive, file still locked, because its -Path $null had been
-  compacted away. Unclaimed nils still drop exactly as before.
+  compacted away. Unclaimed nils still drop exactly as before. The blast radius
+  is every model that ever sends a deliberate nil through a claimed key:
+  HardDrive, ComPort and FloppyDrive #update with path = nil now send
+  -Path $null where the old compact sent no -Path at all — for the DVD drive
+  that null is the measured eject; for those three the null-write itself is
+  not yet measured on a lab node.
 
 - The host pulls, instead of the caller pushing: fetch_url_to_path has the
   Hyper-V host fetch an http(s) URL itself (spike 0.1 measured 148.9 MB/s against
@@ -23,8 +28,11 @@
 - Eject one DVD drive by Id as its own idempotent request: eject_vm_dvd_drive runs
   Set-VMDvdDrive -Path $null -Passthru against the named drive with no media or
   existence check first, so a detach that retries after an already-empty drive gets
-  the same clean answer instead of a false failure, and the passthru answer is the
-  drive with path nil. Its Mock delegates to set_vm_dvd_drive's with path forced
+  the same clean answer instead of a false failure; the passthru answer is the
+  drive as it was BEFORE the eject — the PR-1 measurement watched an eject's answer
+  carry the file the eject had just released while the next fresh read already
+  answered it gone — so a caller that needs the after state re-reads the drive.
+  Its Mock delegates to set_vm_dvd_drive's with path forced
   nil, and a drive the VM does not have answers nil there the way the set's does.
 
 - Read and reorder a Gen2 VM's UEFI boot order without losing what was not asked
@@ -59,8 +67,10 @@
   change — the shape the lab measured Set-VMDvdDrive -Passthru to answer on a
   real Gen2 cluster VM (an eject's answer carried the file the eject had just
   released while the next fresh read already answered it gone) — so
-  DvdDrive#update's merge-back never confirms a write on the host's behalf, and a
-  caller that needs the after state re-reads the drive.
+  DvdDrive#update never merges that answer: the model re-reads the drive after
+  the write (a merge-back left it holding the pre-change state and diffing
+  against it, which made a following eject see no change and send no request at
+  all), so what the model carries is the host's fresh answer.
 
 - Delete one file inside a directory the caller names, and answer whether there
   was anything to delete: remove_file takes `root` as a required argument and
@@ -73,7 +83,7 @@
   -ErrorAction SilentlyContinue — which is what a caller that cleans up the same
   path twice needs. A folder is refused rather than deleted, and an answer the
   script could not have printed raises RemovalVerdictUninterpretable instead of
-  being read as "nothing to do". CAPABILITIES gains contained_file_removal
+  being read as "nothing to do". CAPABILITIES gains contained_file_removal.
 
 - Carry the cluster's preferred owners into the clustered-role read:
   build_read_script now asks Get-ClusterOwnerNode of every matched group and
