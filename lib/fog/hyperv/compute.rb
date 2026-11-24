@@ -59,8 +59,10 @@ module Fog::Hyperv
     request :disable_vm_integration_service
     request :disable_vm_tpm
     request :disconnect_vm_network_adapter
+    request :eject_vm_dvd_drive
     request :enable_vm_integration_service
     request :enable_vm_tpm
+    request :fetch_url_to_path
     request :get_cluster
     request :get_cluster_available_disk
     request :get_cluster_network
@@ -71,6 +73,7 @@ module Fog::Hyperv
     request :get_vhd
     request :get_vm
     request :get_vm_bios
+    request :get_vm_boot_order
     request :get_vm_com_port
     request :get_vm_dvd_drive
     request :get_vm_firmware
@@ -91,6 +94,7 @@ module Fog::Hyperv
     request :new_vm_switch
     request :optimize_vhd
     request :remove_cluster_virtual_machine_role
+    request :remove_file
     request :remove_item
     request :remove_vm
     request :remove_vm_dvd_drive
@@ -108,6 +112,7 @@ module Fog::Hyperv
     request :set_cluster_virtual_machine_role_owner_nodes
     request :set_vm
     request :set_vm_bios
+    request :set_vm_boot_order
     request :set_vm_com_port
     request :set_vm_dvd_drive
     request :set_vm_firmware
