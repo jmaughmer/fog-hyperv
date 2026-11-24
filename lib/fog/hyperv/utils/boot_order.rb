@@ -12,12 +12,18 @@ module Fog::Hyperv
     # Device inside a boot entry, so "is it already in the order" has to compare
     # identifiers, and the only stable one is the device Id.
     #
-    # So every script here classifies entries by BootType first and device class
-    # second (a File entry's Device is null: its rendering is empty, and a
-    # classifier keyed on the rendering alone would put the installer's own File
-    # entries in no class at all), matches requested devices by .Device.Id, and —
-    # in the write script — restores the captured original and raises when the
-    # read-back disagrees, so a failed attempt never leaves the VM half-reordered.
+    # So every script here classifies entries by the class rendered from the
+    # entry's Device first ("DvdDrive (...)", "VMNetworkAdapter (...)"), falling
+    # back to BootType only when that rendering is empty — a File entry's Device
+    # is null and needs the fallback, while a NIC answers BootType 'Network',
+    # which is why BootType-first cannot match a requested adapter (the PR-1
+    # lab measurement) — matches requested devices by .Device.Id, and — in the
+    # write script — restores the captured original and raises when the
+    # read-back disagrees. The restore and the read-back are both guarded: a
+    # restore that itself throws is reported inside the mismatch error instead
+    # of replacing it, and a read-back that throws after the write still puts
+    # the captured order back, so a failed attempt never leaves the VM
+    # half-reordered on an order nobody verified.
     module BootOrder
       # Classes a caller may request. They are the tokens the device rendering
       # shows ("HardDiskDrive (Name = ...)"), measured for hard drives and
@@ -50,9 +56,12 @@ module Fog::Hyperv
       # Validate and normalize a caller's boot-order request before any traffic:
       # what the host could not honour anyway should not reach the host. The
       # shape rules mirror the script's: whole groups (a named Id only for
-      # DvdDrive), one mention of a class (a repeat would reorder the first
-      # group it matched and then insert a second copy), and at least one entry
-      # (an empty order would write the VM's boot order down to nothing).
+      # DvdDrive, and a named Id must actually be one — the script reads an
+      # empty Id as "the whole class", so a nil or blank one would move every
+      # drive of the class while looking like a specific one), one mention of a
+      # class (a repeat would reorder the first group it matched and then insert
+      # a second copy), and at least one entry (an empty order would write the
+      # VM's boot order down to nothing).
       def self.normalize(order)
         raise ArgumentError, 'order must be a non-empty Array of boot classes' unless order.is_a?(Array) && order.any?
 
@@ -64,6 +73,11 @@ module Fog::Hyperv
             raise ArgumentError, "each order entry is a class name or one 'Class' => id pair: #{element.inspect}" unless element.size == 1
 
             klass, id = element.first
+            if id.nil? || id.to_s.strip.empty?
+              raise ArgumentError, "#{klass} => #{id.inspect} names no device: the script reads an " \
+                                   'empty Id as the whole group, so pass the bare class name for that'
+            end
+
             [klass.to_s, id]
           else
             raise ArgumentError, "each order entry is a class name or one 'Class' => id pair: #{element.inspect}"
@@ -192,12 +206,18 @@ module Fog::Hyperv
               }
             }
             $VM | Set-VMFirmware -BootOrder $fogExp.ToArray()
-            $fogBoot = @(($VM | Get-VMFirmware).BootOrder)
+            $fogBoot = @()
+            $fogReadFail = $null
+            try { $fogBoot = @(($VM | Get-VMFirmware).BootOrder) } catch { $fogReadFail = $_.Exception.Message }
             $fogGot = @($fogBoot | ForEach-Object { (fog-class $_) + '|' + (fog-id $_) })
-            if (($fogGot -join ';') -ne ($fogWant -join ';')) {
-              $VM | Set-VMFirmware -BootOrder $fogOrig
-              throw ("set_vm_boot_order: the read-back order ($($fogGot -join ';')) is not what was " + \
-                     "written ($($fogWant -join ';')); the previous order has been restored")
+            if ($fogReadFail -or (($fogGot -join ';') -ne ($fogWant -join ';'))) {
+              $fogRestoreErr = $null
+              try { $VM | Set-VMFirmware -BootOrder $fogOrig } catch { $fogRestoreErr = $_.Exception.Message }
+              $fogWhy = if ($fogReadFail) { "the read-back itself failed: $fogReadFail" } else \
+                        { "the read-back order ($($fogGot -join ';')) is not what was written ($($fogWant -join ';'))" }
+              $fogBack = if ($fogRestoreErr) { "RESTORING THE PREVIOUS ORDER ALSO FAILED: $fogRestoreErr" } else \
+                         { 'the previous order has been restored' }
+              throw ("set_vm_boot_order: $fogWhy; $fogBack")
             }
             #{rows_render}
           SCRIPT
