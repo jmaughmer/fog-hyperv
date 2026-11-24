@@ -176,4 +176,17 @@ class UnitFetchUrlToPathTest < Minitest::Test
     assert_empty @client.list_calls
   end
   # rubocop:enable Minitest/MultipleAssertions
+
+  def test_an_option_the_request_never_reads_raises_at_the_call
+    # The signature names the five inputs the script reads and nothing else.
+    # A catch-all there swallows a typo'd keyword — computer_nmae: would have
+    # pulled the ISO on the DEFAULT endpoint while the caller believed it had
+    # named a host — so an option nobody reads is refused at the call as the
+    # caller error it is, rather than silently dropped before any traffic.
+    assert_raises(ArgumentError) do
+      @client.fetch_url_to_path(url: URL, path: DEST, sha256: SHA, size: 245, computer_nmae: 'HV-NODE2')
+    end
+
+    assert_empty @client.list_calls, 'refused at the signature, no traffic'
+  end
 end
