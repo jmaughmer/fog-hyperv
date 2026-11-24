@@ -32,7 +32,9 @@ require 'test_helper'
 # caller's -Path" instead, a politeness no real host makes; a model calibrated to
 # that answer would believe a mount or eject the host has not finished showing.
 # Add hands back a drive with no media in it, which is what Add-VMDvdDrive without
-# -Path produces on the lab node.
+# -Path produces on the lab node; it hands back that same fixture drive when the
+# caller names a path too, because Add-VMDvdDrive -Path's answer was never measured
+# and the Mock invents no shape it has not seen.
 class UnitDvdDriveMockTest < Minitest::Test
   VM_ID = '416e49fd-28dd-413c-9743-aa3e69e4807d'
   DRIVE_ID = 'Microsoft:416E49FD-28DD-413C-9743-AA3E69E4807D\\' \
@@ -88,6 +90,17 @@ class UnitDvdDriveMockTest < Minitest::Test
     assert_nil drive[:path], 'a drive just added has no media in it'
     assert_equal DRIVE_ID, drive[:id], 'and it answers with the identity the caller ' \
                                        'has to address it by afterwards'
+  end
+
+  def test_the_mocked_add_answers_the_fixture_drive_even_when_a_path_is_named
+    # Whether Add-VMDvdDrive -Path answers the new drive already holding its
+    # file was never measured on the lab node (the flow that matters adds the
+    # drive bare and attaches with Set), so the Mock invents nothing: the
+    # fixture drive comes back unchanged, the same answer a pathless add gives.
+    with_media = @client.add_vm_dvd_drive(vm_id: VM_ID, path: ISO)
+
+    assert_nil with_media[:path], 'the Mock answers the fixture drive, not the caller wish'
+    assert_equal DRIVE_ID, with_media[:id], 'and it is still the drive the caller can follow up on'
   end
 
   def test_a_mocked_set_answers_the_drive_as_it_was_before_the_change
@@ -158,20 +171,56 @@ class UnitDvdDriveMockTest < Minitest::Test
   end
   # rubocop:enable Minitest/MultipleAssertions
 
-  def test_the_dvd_drive_model_eject_answers_the_pre_eject_drive
-    drive = @client.dvd_drives(vm_id: VM_ID).get(DRIVE_ID)
+  # rubocop:disable Minitest/MultipleAssertions
+  # one drive's whole life on one model object — start, attach, model state,
+  # eject, request sent, model state again — and that whole life is exactly
+  # where the merge-back hazard lives, so it cannot be asserted from fewer sides
+  def test_a_model_eject_after_a_mount_sends_its_request_and_the_model_shows_the_reread
+    # The hazard the Passthru truth exposed: Set-VMDvdDrive -Passthru answers
+    # the drive as it was BEFORE the change (BD-EJ3-REQUEST-ANSWER carried the
+    # file the eject had just released; BD-EJ3-GET-AFTER, one fresh read later,
+    # answered it gone). If DvdDrive#update merges that answer back, the fork's
+    # merge_attributes also resets @old from it — the model ends up holding the
+    # PRE-change drive as both its attributes and its diff baseline. On a real
+    # host that makes the second update in this test (path = nil after a mount)
+    # see no change at all: the eject sends no request, the ISO stays mounted,
+    # and the caller reads success. update re-reads the drive instead — the
+    # fresh read is the only host answer that describes the write — and this
+    # client answers like the measured host: Set hands back the drive as it was
+    # before its change, and only the Get carries the after state.
+    compute = Fog::Compute.new(provider: 'hyperv', hyperv_username: 'test')
+    row = compute.get_vm_dvd_drive(vm_id: VM_ID)
+    media = nil
+    sent = []
+    compute.define_singleton_method(:set_vm_dvd_drive) do |**args|
+      sent << args
+      answer = row.merge(path: media)
+      media = args.fetch(:path, media)
+      answer
+    end
+    compute.define_singleton_method(:get_vm_dvd_drive) do |**_args|
+      row.merge(path: media)
+    end
+    drive = compute.dvd_drives(vm_id: VM_ID).get(DRIVE_ID)
+
+    assert_nil drive.path, 'the fixture drive starts with no media'
+
     drive.path = ISO
     drive.update
 
-    # The eject detach(52) performs: DvdDrive#update asks eject_vm_dvd_drive for
-    # a path change to nil, and the answer merged back is the pre-change drive —
-    # what the host was measured to hand back, file and all on a mounted drive.
-    # The plugin re-reads the drive to confirm; the model does not lie about the
-    # host by confirming on its behalf.
-    drive.path = nil
-    answer_back = drive.update
+    assert_equal 1, sent.size
+    assert_equal ISO, drive.path,
+                 'the model carries the re-read answer — the host does hold the file now — ' \
+                 'not the pre-change Passthru answer'
 
-    assert_nil answer_back.path,
-               'the merged-back answer is the pre-change drive (the fixture held no media)'
+    drive.path = nil
+    drive.update
+
+    assert_equal 2, sent.size, 'the eject must send a request: the merge-back made it silently skip'
+    assert_nil sent.last[:path]
+    assert_includes sent.last[:_always_include], :path,
+                    'the nil rides the _always_include claim so the transport renders -Path $null'
+    assert_nil drive.path, 'and the model again shows the re-read, which says the media is gone'
   end
+  # rubocop:enable Minitest/MultipleAssertions
 end

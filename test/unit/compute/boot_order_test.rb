@@ -15,7 +15,10 @@ require 'fog/hyperv/compute/requests/set_vm_boot_order'
 #
 #   read the current order, compute the complete expected sequence, write it in ONE
 #   Set-VMFirmware, read back the full ordered identity sequence, and on any mismatch
-#   restore the captured original and raise — never leave a half-reordered VM;
+#   restore the captured original and raise — never leave a half-reordered VM; the
+#   restore and the read-back are both guarded, so a restore that itself throws, or a
+#   read-back that throws after the write, still puts the VM's order back and still
+#   reports both facts rather than replacing the mismatch story;
 #
 # classification keys on the device class rendered from the entry's Device FIRST
 # ("HardDiskDrive (...)", "VMNetworkAdapter (...)", "DvdDrive (...)") and falls
@@ -174,18 +177,30 @@ class UnitBootOrderTest < Minitest::Test
     @client.verdict = ORDER_JSON
     call_set
 
-    restore = script[/if \(\(\$fogGot.*\z/m]
+    restore = script[/if \(\$fogReadFail.*/m]
 
     refute_nil restore, 'the read-back must be compared against what was written'
-    assert_includes restore, 'Set-VMFirmware'
-    assert_includes restore, '$fogOrig',
-                    'the order written back must be the one captured before the write, not a guess'
-    assert_includes restore, 'throw',
-                    'and the caller has to learn the write did not take'
-    assert_operator restore.index('Set-VMFirmware'), :<, restore.index('throw'),
+    assert_includes restore, 'try { $VM | Set-VMFirmware -BootOrder $fogOrig } catch',
+                    'the restore is best-effort: one that itself throws must not replace the ' \
+                    'mismatch report with its own error'
+    assert_includes restore, 'RESTORING THE PREVIOUS ORDER ALSO FAILED',
+                    'the raise has to say whether the restore worked, including when it did not'
+    assert_operator restore.index('Set-VMFirmware -BootOrder $fogOrig'), :<, restore.index('throw'),
                     'restore happens before the raise, not after'
   end
   # rubocop:enable Minitest/MultipleAssertions
+
+  def test_a_readback_that_throws_after_the_write_still_restores_and_raises
+    # Decision 3's promise is about the VM, not about the happy path: if the
+    # fresh Get-VMFirmware itself throws after a successful write, the captured
+    # original still has to go back and the caller still has to hear about it —
+    # an ungarded read left the VM on the new order with a raw PSError instead.
+    call_set
+
+    assert_includes script, 'try { $fogBoot = @(($VM | Get-VMFirmware).BootOrder) } catch'
+    assert_includes script, '$fogReadFail -or',
+                    'a read-back failure flows into the same restore-then-raise path as a mismatch'
+  end
 
   def test_the_write_answers_the_new_order_it_read_back
     @client.verdict = ORDER_JSON
@@ -220,6 +235,18 @@ class UnitBootOrderTest < Minitest::Test
     assert_raises(ArgumentError) { call_set(order: [{ 'HardDiskDrive' => 'some-id' }]) }
     assert_empty @client.list_calls
   end
+
+  # rubocop:disable Minitest/MultipleAssertions
+  def test_a_named_entry_with_a_blank_id_is_refused
+    # The script reads an empty Id as "the whole class", so { 'DvdDrive' => nil }
+    # or => '' is not naming one drive — it silently moves every DVD drive while
+    # looking like a specific one. The bare class name is how a caller says that.
+    assert_raises(ArgumentError) { call_set(order: [{ 'DvdDrive' => nil }]) }
+    assert_raises(ArgumentError) { call_set(order: [{ 'DvdDrive' => '' }]) }
+    assert_raises(ArgumentError) { call_set(order: [{ 'DvdDrive' => '   ' }]) }
+    assert_empty @client.list_calls, 'refused at normalization, no traffic'
+  end
+  # rubocop:enable Minitest/MultipleAssertions
 
   def test_order_entries_must_be_names_or_one_pair_hashes
     assert_raises(ArgumentError) { call_set(order: [%w[HardDiskDrive DvdDrive]]) }
