@@ -1,5 +1,17 @@
 ## Unreleased
 
+- Answer the DVD-drive requests under Fog.mock!, so a plugin can drive one drive
+  through add, attach, read, eject and remove without a Hyper-V host: get_vm_dvd_drive's
+  Mock read a local named args that the method never defines (it takes **options), which
+  raised NameError on every mocked DVD read before it looked at the fixture beside it,
+  and it filtered only by vm_id so a drive named by Id was answered by whichever drive
+  the VM had. Add/Set/Remove had no Mock at all and fell through to method_missing,
+  which raises MockNotImplemented because a passthru cmdlet has no fixture of its own;
+  they now answer from get_vm_dvd_drive's fixture rather than growing three
+  near-identical JSON files, with Set reflecting the caller's -Path — including the nil
+  that means eject, because DvdDrive#update merges the answer back and that merge is how
+  a caller reads its own work.
+
 - Delete one file inside a directory the caller names, and answer whether there
   was anything to delete: remove_file takes `root` as a required argument and
   refuses, before any wire traffic, every path that is not that directory or one
