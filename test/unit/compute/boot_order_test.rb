@@ -2,6 +2,8 @@
 
 require 'test_helper'
 
+require 'fog/json'
+
 require 'fog/hyperv/utils/boot_order'
 require 'fog/hyperv/compute/requests/get_vm_boot_order'
 require 'fog/hyperv/compute/requests/set_vm_boot_order'

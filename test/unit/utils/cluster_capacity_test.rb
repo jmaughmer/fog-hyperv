@@ -2,6 +2,8 @@
 
 require 'test_helper'
 
+require 'fog/json'
+
 # The rules behind the Cluster Shared Volume read. These are the guards that stand
 # between "the node did not answer my storage question" and "this cluster has these
 # volumes" — the second of which licenses placing a machine's disks — so every

@@ -2,6 +2,8 @@
 
 require 'test_helper'
 
+require 'fog/json'
+
 require 'fog/hyperv/compute/requests/set_cluster_virtual_machine_role_owner_nodes'
 
 # PLG-36: preferred owners are WRITABLE on this build. Evidence section 76

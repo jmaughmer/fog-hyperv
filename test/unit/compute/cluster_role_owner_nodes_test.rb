@@ -2,6 +2,8 @@
 
 require 'test_helper'
 
+require 'fog/json'
+
 # PLG-31b: the cluster's preferred owners for a role — the nodes it PREFERS
 # to run the machine on — make the same trip into the role read as PLG-30's
 # failback properties did, so the VM detail page can show what Failover

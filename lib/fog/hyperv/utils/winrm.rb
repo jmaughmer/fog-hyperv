@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'fog/json'
+
 # rubocop:disable Metrics/ModuleLength
 
 # WinRM helper methods
