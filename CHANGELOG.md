@@ -1,5 +1,18 @@
 ## Unreleased
 
+- Delete one file inside a directory the caller names, and answer whether there
+  was anything to delete: remove_file takes `root` as a required argument and
+  refuses, before any wire traffic, every path that is not that directory or one
+  literal location inside it (relative or drive-relative, wildcarded, carrying
+  `/` as a separator, carrying `..`, or outside its root), then tests for the
+  file and deletes it in the SAME script. Absence answers false instead of
+  raising PSError the way remove_item does on a repeated cleanup — measured on
+  the lab node, where Remove-Item of a missing path raised even under
+  -ErrorAction SilentlyContinue — which is what a caller that cleans up the same
+  path twice needs. A folder is refused rather than deleted, and an answer the
+  script could not have printed raises RemovalVerdictUninterpretable instead of
+  being read as "nothing to do". CAPABILITIES gains contained_file_removal
+
 - Carry the cluster's preferred owners into the clustered-role read:
   build_read_script now asks Get-ClusterOwnerNode of every matched group and
   rows come back with preferredNodeNames, mirrored by the model's

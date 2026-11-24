@@ -115,6 +115,14 @@ module Fog
       # by the time it runs.
       class InvalidDestructivePath < ServiceError; end
 
+      # The same request answered with a body its own script cannot produce: the
+      # contained file removal prints REMOVED=true or REMOVED=false and nothing
+      # else, so any other stdout — empty, an extra object, advisory text that
+      # reached the success stream — leaves "did this delete anything" unknown,
+      # and a caller that cleaned up on the strength of it might delete again, or
+      # not delete at all, on a guess.
+      class RemovalVerdictUninterpretable < ServiceError; end
+
       # A host-shaped input — the host option that composes an endpoint, the
       # endpoint URL itself, or a name about to be composed into an endpoint —
       # carried something outside the host shape: a shell metacharacter, a
@@ -249,11 +257,23 @@ module Fog
     # by a fresh Get-ClusterOwnerNode of the same group, raising
     # RolePropertyWriteRefused or ClusterRoleNotFound instead of reporting a
     # setting the cluster never accepted.
+    # `:contained_file_removal` means a file delete carried an explicit scope and
+    # answered whether there was anything to delete: remove_file takes the
+    # directory it may work inside as a required argument and refuses, before any
+    # wire traffic, every path that is not that directory or one literal location
+    # inside it — relative or drive-relative, wildcarded, mixed-separator, or
+    # outside its root (Fog::Hyperv::Utils::ContainedPath) — and it tests for the
+    # file and deletes it in the SAME script, so absence answers false instead of
+    # reaching the transport as a non-zero exit and raising PSError the way
+    # remove_item does on a repeated cleanup. A folder is refused, not deleted.
+    # Anything else the script could not have printed raises
+    # RemovalVerdictUninterpretable rather than being read as "nothing to do".
     # A caller on an older gem sees no constant here and must treat every fork
     # behaviour as absent.
     CAPABILITIES = %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene
                       input_hardening cluster_capacity_projection cluster_role_failback
-                      cluster_role_owner_nodes cluster_role_owner_nodes_write].freeze
+                      cluster_role_owner_nodes cluster_role_owner_nodes_write
+                      contained_file_removal].freeze
 
     service(:compute, 'Compute')
 
