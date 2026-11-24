@@ -246,10 +246,11 @@ class UnitHostInputHardeningTest < Minitest::Test
     # another behaviour has to be added here on purpose, not by accident.
     # PLG-30's failback write is that seventh and PLG-31b's owner-list read
     # is the eighth, both added on purpose; PLG-36's owner-list write is the
-    # ninth, added on purpose too.
+    # ninth, added on purpose too, and FOG-21's contained-file removal is the
+    # tenth — a plugin that gates a file delete on a scope answer reads it.
     assert_equal %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene
                     input_hardening cluster_capacity_projection cluster_role_failback cluster_role_owner_nodes
-                    cluster_role_owner_nodes_write],
+                    cluster_role_owner_nodes_write contained_file_removal],
                  Fog::Hyperv::CAPABILITIES
   end
 
