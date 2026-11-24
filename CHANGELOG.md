@@ -55,9 +55,12 @@
   the VM had. Add/Set/Remove had no Mock at all and fell through to method_missing,
   which raises MockNotImplemented because a passthru cmdlet has no fixture of its own;
   they now answer from get_vm_dvd_drive's fixture rather than growing three
-  near-identical JSON files, with Set reflecting the caller's -Path — including the nil
-  that means eject, because DvdDrive#update merges the answer back and that merge is how
-  a caller reads its own work.
+  near-identical JSON files, with Set answering the drive as it was BEFORE the
+  change — the shape the lab measured Set-VMDvdDrive -Passthru to answer on a
+  real Gen2 cluster VM (an eject's answer carried the file the eject had just
+  released while the next fresh read already answered it gone) — so
+  DvdDrive#update's merge-back never confirms a write on the host's behalf, and a
+  caller that needs the after state re-reads the drive.
 
 - Delete one file inside a directory the caller names, and answer whether there
   was anything to delete: remove_file takes `root` as a required argument and

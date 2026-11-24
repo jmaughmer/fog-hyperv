@@ -16,15 +16,18 @@ class Fog::Hyperv::Compute
     # rather than taking "the first drive", which is the same addressing rule
     # every other drive-scoped request here follows.
     #
-    # -Passthru, like set_vm_dvd_drive: the answer is the drive as the host has
-    # it now. The _always_include is not decoration: a nil argument is what the
-    # transport's arg filter drops, and a dropped Path silently turns the eject
-    # into a no-op that passes the still-mounted drive back — the PR-1 lab
-    # measurement saw exactly that answer from the real host. Claiming the key
-    # carries the nil into the rendered parameters, where it binds as -Path $null,
-    # which is the eject. A drive Id the VM does not have raises from
-    # Get-VMDvdDrive -Id, which is the honest refusal: eject "this drive" on a VM
-    # that never had it is a caller error, not something to answer as already-done.
+    # -Passthru is for the caller that wants the drive object; measured on the
+    # lab node, that answer is the drive as it was BEFORE the eject (the file the
+    # eject had just released rode back in it), so a caller that needs the after
+    # state re-reads the drive. The _always_include is not decoration: a nil
+    # argument is what the transport's arg filter drops, and a dropped Path
+    # silently turns the eject into a no-op that passes the still-mounted drive
+    # back — the PR-1 lab measurement saw exactly that answer from the real host.
+    # Claiming the key carries the nil into the rendered parameters, where it
+    # binds as -Path $null, which is the eject. A drive Id the VM does not have
+    # raises from Get-VMDvdDrive -Id, which is the honest refusal: eject "this
+    # drive" on a VM that never had it is a caller error, not something to answer
+    # as already-done.
     def eject_vm_dvd_drive(id:, vm_id:, computer_name: nil, **_options)
       run_cmdlist(
         [
@@ -37,11 +40,11 @@ class Fog::Hyperv::Compute
     end
   end
 
-  # The eject is a set with a fixed -Path $null, so the Mock says exactly that:
-  # it answers the fixture drive with the media gone (the same merge-back shape
-  # set_vm_dvd_drive's Mock documents — an answer still carrying the old file
-  # would tell a retried detach its eject had not happened), and a drive Id the
-  # fixture does not carry answers nil like the set's does.
+  # The eject is a set with a fixed -Path $null, so the Mock is the set's Mock:
+  # it answers the fixture drive as it was before the change, which is what the
+  # lab measured the real Passthru answer to be. A caller that needs to know the
+  # media actually left re-reads the drive — under Mock that is the fixture too,
+  # and a drive Id the fixture does not carry answers nil like the set's does.
   class Mock
     def eject_vm_dvd_drive(**options)
       requires options, :id, :vm_id

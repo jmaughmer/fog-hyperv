@@ -14,11 +14,14 @@ class Fog::Hyperv::Compute
     end
   end
 
-  # Set-VMDvdDrive is -Passthru, so its answer is the drive as it now is, and
-  # DvdDrive#update merges that answer back into the model — which is how a caller
-  # reads its own work. So the Mock reflects the caller's -Path rather than
-  # echoing the fixture: path: nil is an eject, and an answer that still carried
-  # the old file would tell iso_attach its eject had not happened.
+  # Set-VMDvdDrive is -Passthru, and the lab measured what that answer really
+  # is: the drive as it was BEFORE the change (an eject answered the file the
+  # eject had just released, while the next fresh read of the same drive already
+  # answered it gone — BD-EJ3-REQUEST-ANSWER vs BD-EJ3-GET-AFTER). So the Mock
+  # answers the fixture drive unchanged, and DvdDrive#update's merge-back hands
+  # the model the pre-change state: a caller that needs the after state re-reads
+  # the drive, which is the only answer the host guarantees. The Mock used to
+  # "reflect the caller's -Path" instead, a politeness no real host makes.
   #
   # A drive Id the VM does not have answers nil. The Real raises PSError there,
   # because Get-VMDvdDrive -Id fails; a Mock that raised the same thing would need
@@ -28,13 +31,10 @@ class Fog::Hyperv::Compute
     def set_vm_dvd_drive(**options)
       requires options, :id, :vm_id
 
-      row = handle_mock_response(_method: 'get_vm_dvd_drive', **options).find do |candidate|
+      handle_mock_response(_method: 'get_vm_dvd_drive', **options).find do |candidate|
         candidate[:vm_id].casecmp(options[:vm_id].to_s).zero? &&
           candidate[:id].to_s.casecmp(options[:id].to_s).zero?
       end
-      return nil unless row
-
-      options.key?(:path) ? row.merge(path: options[:path]) : row
     end
   end
 end
