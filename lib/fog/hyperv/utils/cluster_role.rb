@@ -325,6 +325,37 @@ module Fog
                 'cannot say which of the two the cluster should be set to'
         end
 
+        # Accept the preferred-owner list a write carries. This is a write: nil
+        # would have to mean both "leave it alone" and "I asked you to change
+        # it", so it is refused, while the explicit [] IS a statement — the
+        # measured unset state, "no restricted list, any node may own" (evidence
+        # section 76) — and the request maps it to the cmdlet's one measured
+        # clear spelling. Every name goes through the gem's one host-shape rule
+        # (Fog::Hyperv::Utils::HostInput): node names ride inside single quotes
+        # in one composed PowerShell line, and a cluster node's name is exactly
+        # what a host name is allowed to be. A node named twice is refused too:
+        # the cluster keeps one entry per node and compares names
+        # case-insensitively, so a doubled entry is a caller mistake, not a
+        # second owner. The validated names come back as given.
+        def validate_owner_nodes!(value, request)
+          unless value.is_a?(Array)
+            raise ArgumentError,
+                  "owner_nodes must be an Array of node names; this is a write, and #{value.inspect} " \
+                  'cannot say whether the cluster should restrict the owners, clear the list, or ' \
+                  'leave it alone — an explicit [] means "no restriction"'
+          end
+
+          names = value.map { |name| Fog::Hyperv::Utils::HostInput.validate_host_input!(name, request) }
+          doubled = names.map(&:downcase).tally.select { |_name, count| count > 1 }.keys
+          unless doubled.empty?
+            raise ArgumentError,
+                  "owner_nodes names the same node more than once (#{doubled.join(', ')} matched " \
+                  'case-insensitively); the cluster keeps one entry per node, so list each node once'
+          end
+
+          names
+        end
+
         # The one shell a failback write runs. The measured contract (evidence
         # section 60, HV-CL01, Server 2025 / cluster build 26100): the property
         # is $group.AutoFailbackType — 0 off, 1 on — and it is the ONE HA group
@@ -446,6 +477,137 @@ module Fog
           else
             raise Fog::Hyperv::Errors::RoleReadUninterpretable,
                   "the clustered failback write answered a verdict this contract does not define (#{payload[:result].inspect})"
+          end
+        end
+
+        # The one shell a preferred-owners write runs, measured end to end on
+        # HV-CL01 (evidence section 76): the cmdlet is Set-ClusterOwnerNode and
+        # its owner parameter is -Owners — the -Nodes call that once read as a
+        # "silent no-op" died on parameter binding before touching the cluster,
+        # and the cmdlet exposes Resource/Group/Owners/InputObject/Cluster and
+        # nothing else. The write STICKS across shells. Clearing has exactly one
+        # spelling, -Owners '': -Owners @() and $null are refused by the cmdlet
+        # outright and there is no Reset-ClusterOwnerNode, so the empty wanted
+        # list composes the empty-string arm and nothing else.
+        #
+        # The triple identification the failback and removal scripts demand runs
+        # before anything is written, because Set-ClusterOwnerNode lands on
+        # whatever the filter matched. The write is then PROVEN the same way:
+        # Get-ClusterOwnerNode is asked of the same $group object inside the
+        # script, the .OwnerNodes names come home as 'actual', and 'applied' is
+        # reserved for the case-insensitive set comparison agreeing — the
+        # cluster is measured to return the names it was given but is not
+        # measured to preserve their case or order. A Set that throws (with
+        # ErrorActionPreference Stop even a non-terminating failure lands in the
+        # catch) answers 'refused' carrying the cluster's own words.
+        #
+        # The only Ruby interpolations are the validated GUID and the
+        # host-shape-validated names; every value the cluster itself produced
+        # stays inside the shell.
+        def build_owner_nodes_script(id:, owner_nodes:)
+          id = validate_role_identifier!(id, __method__)
+          names = validate_owner_nodes!(owner_nodes, __method__)
+          owners_literal = names.empty? ? "''" : "@('#{names.join("','")}')"
+          wanted_literal = names.map { |name| "'#{name}'" }.join(', ')
+
+          <<~SCRIPT
+            $ErrorActionPreference = 'Stop'
+            $WarningPreference = 'SilentlyContinue'
+            #{VM_ID_HELPER}
+            $cluster = Get-Cluster
+            $wanted = @(#{wanted_literal})
+            $answer = [ordered]@{ clusterName = [string]$cluster.Name; result = ''; error = ''; wanted = $wanted; actual = $null }
+            try {
+              $groups = @(Get-ClusterGroup -VMId ([guid]'#{id}'))
+              if ($groups.Count -ne 1) { throw ('the role read answered ' + $groups.Count + ' groups for one machine id; exactly one is required to set its preferred owners') }
+              $group = $groups[0]
+              if ($group.GroupType -ne 'VirtualMachine') { throw 'the matched cluster group is not a virtual machine role; refusing to configure it' }
+              $resolvedId = Get-FogHypervGroupVmId $group
+              if ($resolvedId -eq '') { throw 'the matched cluster group carries no machine id at all; refusing to configure it' }
+              if ($resolvedId -ine '#{id}') { throw 'the matched cluster group carries a different machine id than the one asked about; refusing to configure it' }
+              try {
+                Set-ClusterOwnerNode -Group $group -Owners #{owners_literal}
+                $readback = @(Get-ClusterOwnerNode -Group $group | ForEach-Object { @($_.OwnerNodes) | ForEach-Object { [string]$_.Name } })
+                $answer['actual'] = $readback
+                $answer['result'] = if ((@($readback | ForEach-Object { $_.ToLowerInvariant() }) | Sort-Object) -join '|') -eq ((@($wanted | ForEach-Object { $_.ToLowerInvariant() }) | Sort-Object) -join '|') { 'applied' } else { 'refused' }
+              } catch {
+                $answer['result'] = 'refused'
+                $answer['error'] = $_.Exception.Message
+              }
+            } catch {
+              $fullyQualifiedErrorId = [string]$_.FullyQualifiedErrorId
+              if ($fullyQualifiedErrorId -like 'PSArgument*') { $answer['result'] = 'no-role' } else { throw }
+            }
+            ConvertTo-Json -Compress -Depth 4 -InputObject $answer
+          SCRIPT
+        end
+
+        # Read the preferred-owners verdict, returning true only on the shape
+        # that means the cluster took the setting: an 'applied' whose fresh
+        # owner read-back names EXACTLY the wanted set — re-checked here, case-
+        # and order-insensitively, because a self-contradicting verdict is the
+        # silent no-stick this contract exists to catch. A null read-back is not
+        # agreement either: it means the per-group owner read inside the shell
+        # failed, and unknown is never the same answer as "agrees" — not even
+        # when the wanted set is the empty one. The measured refusal text rides
+        # into RolePropertyWriteRefused so the caller can show what the cluster
+        # said; 'no-role' is its own ClusterRoleNotFound, because "not
+        # clustered" and "cluster said no" are different answers. Silence,
+        # garbage, and an answer with no cluster to attribute it to are the same
+        # class of non-answer the failback write and the role read refuse.
+        def parse_owner_nodes_write(stdout, wanted:)
+          text = stdout.to_s.strip
+          if text.empty?
+            raise Fog::Hyperv::Errors::RoleReadUninterpretable,
+                  'the preferred-owners write succeeded and printed nothing; the script always prints ' \
+                  'its verdict, so silence is not a readable outcome'
+          end
+
+          payload = begin
+            Fog::Hyperv.uncamelize(Fog::JSON.decode(text))
+          rescue StandardError => e
+            raise Fog::Hyperv::Errors::RoleReadUninterpretable,
+                  "the preferred-owners write did not answer with the JSON object this request defines (#{e.class})"
+          end
+          unless payload.is_a?(Hash)
+            raise Fog::Hyperv::Errors::RoleReadUninterpretable,
+                  "the preferred-owners write answered #{payload.class} where the script emits a single object"
+          end
+          if payload[:cluster_name].to_s.empty?
+            raise Fog::Hyperv::Errors::RoleReadUninterpretable,
+                  'the preferred-owners write came back without the answering cluster name, so the answer ' \
+                  'cannot be attributed to any cluster'
+          end
+
+          case payload[:result].to_s
+          when 'applied'
+            actual = payload[:actual]
+            if actual.nil?
+              raise Fog::Hyperv::Errors::RolePropertyWriteRefused,
+                    'the preferred-owners write answered applied but its owner read-back did not answer ' \
+                    'at all; unknown owners are not agreement'
+            end
+
+            actual_set = Array(actual).map { |name| name.to_s.downcase }.sort
+            wanted_set = Array(wanted).map { |name| name.to_s.downcase }.sort
+            unless actual_set == wanted_set
+              raise Fog::Hyperv::Errors::RolePropertyWriteRefused,
+                    'the preferred-owners write answered applied but the fresh read-back does not name ' \
+                    'the set that was asked for'
+            end
+
+            true
+          when 'refused'
+            detail = payload[:error].to_s
+            detail = 'the fresh read-back did not name the set that was asked for' if detail.empty?
+            raise Fog::Hyperv::Errors::RolePropertyWriteRefused,
+                  "the cluster refused the preferred-owners setting (#{detail})"
+          when 'no-role'
+            raise Fog::Hyperv::Errors::ClusterRoleNotFound,
+                  'the machine has no clustered role, so there are no preferred owners to set'
+          else
+            raise Fog::Hyperv::Errors::RoleReadUninterpretable,
+                  "the preferred-owners write answered a verdict this contract does not define (#{payload[:result].inspect})"
           end
         end
 

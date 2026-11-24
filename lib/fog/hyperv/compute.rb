@@ -105,6 +105,7 @@ module Fog::Hyperv
     request :resume_vm
     request :save_vm
     request :set_cluster_virtual_machine_role_auto_failback
+    request :set_cluster_virtual_machine_role_owner_nodes
     request :set_vm
     request :set_vm_bios
     request :set_vm_com_port
