@@ -69,7 +69,7 @@ class UnitBootOrderTest < Minitest::Test
     @client.get_vm_boot_order(vm_id: VM_ID, computer_name: 'HV-NODE1')
   end
 
-  def call_set(order: ['HardDiskDrive', { 'DVDDrive' => DVD_ID }, 'VMNetworkAdapter'])
+  def call_set(order: ['HardDiskDrive', { 'DvdDrive' => DVD_ID }, 'VMNetworkAdapter'])
     @client.set_vm_boot_order(vm_id: VM_ID, order: order, computer_name: 'HV-NODE1')
   end
 
@@ -134,7 +134,7 @@ class UnitBootOrderTest < Minitest::Test
 
     parsed = Fog::JSON.decode(encoded.gsub("''", "'"))
 
-    assert_equal %w[HardDiskDrive DVDDrive VMNetworkAdapter], parsed.map { |e| e['Class'] }
+    assert_equal %w[HardDiskDrive DvdDrive VMNetworkAdapter], parsed.map { |e| e['Class'] }
     assert_equal DVD_ID, parsed[1]['Id'], 'the DVD entry carries the drive Id the caller named'
     assert_nil parsed[0]['Id'], 'a class without a named Id moves the whole group'
   end
@@ -154,7 +154,7 @@ class UnitBootOrderTest < Minitest::Test
   def test_a_missing_named_dvd_drive_is_refused_not_written_around
     call_set
 
-    assert_match(/DVDDrive.*throw|throw.*DVD/m, script,
+    assert_match(/DvdDrive.*throw|throw.*DVD/m, script,
                  'a DVD Id the VM does not have must refuse the request, not write an order missing it')
   end
 
@@ -211,8 +211,8 @@ class UnitBootOrderTest < Minitest::Test
   end
 
   def test_order_entries_must_be_names_or_one_pair_hashes
-    assert_raises(ArgumentError) { call_set(order: [%w[HardDiskDrive DVDDrive]]) }
-    assert_raises(ArgumentError) { call_set(order: [{ 'DVDDrive' => DVD_ID, 'extra' => 1 }]) }
+    assert_raises(ArgumentError) { call_set(order: [%w[HardDiskDrive DvdDrive]]) }
+    assert_raises(ArgumentError) { call_set(order: [{ 'DvdDrive' => DVD_ID, 'extra' => 1 }]) }
     assert_empty @client.list_calls
   end
 end
