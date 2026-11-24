@@ -1,5 +1,12 @@
 ## Unreleased
 
+- Eject one DVD drive by Id as its own idempotent request: eject_vm_dvd_drive runs
+  Set-VMDvdDrive -Path $null -Passthru against the named drive with no media or
+  existence check first, so a detach that retries after an already-empty drive gets
+  the same clean answer instead of a false failure, and the passthru answer is the
+  drive with path nil. Its Mock delegates to set_vm_dvd_drive's with path forced
+  nil, and a drive the VM does not have answers nil there the way the set's does.
+
 - Read and reorder a Gen2 VM's UEFI boot order without losing what was not asked
   for: get_vm_boot_order answers the firmware's entries as an ordered list (position,
   BootType, the Device rendering, the device Id, the File entry's FirmwarePath), and
