@@ -2,8 +2,6 @@
 
 require 'test_helper'
 
-require 'fog/json'
-
 # Measured on the lab cluster: Add-ClusterVirtualMachineRole SUCCEEDED — group
 # created, VM intact — and fog raised Fog::JSON::DecodeError: unexpected
 # character: 'Warning:' at line 1 column 1. Failover-clustering cmdlets write
