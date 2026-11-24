@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'fog/json'
+
 # rubocop:disable Metrics/ModuleLength
 
 # file-scoped for the same reason winrm.rb carries it: this module's length is

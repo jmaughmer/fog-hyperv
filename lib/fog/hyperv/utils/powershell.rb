@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'fog/json'
+
 module Fog::Hyperv::Utils::Powershell
   # Build a Powershell option map from a set of keyword arguments
   # @param _optmap_name [String] the name of the option map to generate

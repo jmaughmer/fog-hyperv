@@ -2,6 +2,8 @@
 
 require 'test_helper'
 
+require 'fog/json'
+
 # The rules the clustered-role requests share. These are the guards that stand
 # between "the cluster did not answer my question" and "the cluster said the
 # machine has no role" — the second of which licenses destroying that machine's

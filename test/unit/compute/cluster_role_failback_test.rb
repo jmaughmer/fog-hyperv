@@ -2,6 +2,8 @@
 
 require 'test_helper'
 
+require 'fog/json'
+
 require 'fog/hyperv/compute/requests/set_cluster_virtual_machine_role_auto_failback'
 
 # PLG-30: the one per-role High Availability setting this cluster build accepts
