@@ -72,12 +72,14 @@ class UnitClusterRoleOwnerNodesWriteTest < Minitest::Test
   # This is a write: nil would have to mean both "leave it alone" and "I asked
   # you to change it". The explicit [] is the caller's way of saying "no
   # restriction" — the measured unset state — and it is accepted.
+  # rubocop:disable Minitest/MultipleAssertions
   def test_only_an_array_of_names_is_accepted
     assert_raises(ArgumentError) { subject.validate_owner_nodes!(nil, 'req') }
     assert_raises(ArgumentError) { subject.validate_owner_nodes!('hv-node1', 'req') }
     assert_raises(ArgumentError) { subject.validate_owner_nodes!({}, 'req') }
     assert_equal [], subject.validate_owner_nodes!([], 'req')
   end
+  # rubocop:enable Minitest/MultipleAssertions
 
   # Node names ride the wire inside single quotes in one composed PowerShell
   # line, so each one goes through the shared host-shape rule — the same rule
@@ -121,18 +123,17 @@ class UnitClusterRoleOwnerNodesWriteTest < Minitest::Test
   # -Owners is the ONLY spelling this build binds (measured: the cmdlet has
   # Resource/Group/Owners/InputObject/Cluster — no -Nodes), and the names ride
   # as a single-quoted array in the caller's order.
-  # rubocop:disable Minitest/MultipleAssertions
   def test_the_script_writes_through_the_measured_owners_parameter
     script = subject.build_owner_nodes_script(id: GUID, owner_nodes: %w[hv-node1 hv-node2])
 
     assert_includes script, "Set-ClusterOwnerNode -Group $group -Owners @('hv-node1','hv-node2')"
     refute_includes script, '-Nodes'
   end
-  # rubocop:enable Minitest/MultipleAssertions
 
   # The clear has exactly one measured spelling: -Owners '' restores the unset
   # []. -Owners @() and $null are refused BY THE CMDLET, so the script must
   # never emit them.
+  # rubocop:disable Minitest/MultipleAssertions
   def test_the_empty_list_clears_through_the_measured_empty_string
     script = subject.build_owner_nodes_script(id: GUID, owner_nodes: [])
 
@@ -141,6 +142,7 @@ class UnitClusterRoleOwnerNodesWriteTest < Minitest::Test
     refute_includes script, '-Owners @()'
     refute_includes script, '-Owners $null'
   end
+  # rubocop:enable Minitest/MultipleAssertions
 
   # The write is proven by the cmdlet that READS owners — Get-ClusterOwnerNode
   # asked of the same group, .OwnerNodes names into the verdict — never by the
@@ -169,7 +171,6 @@ class UnitClusterRoleOwnerNodesWriteTest < Minitest::Test
   # The group is carried by the $group object inside one shell; no value read
   # from the cluster comes back through Ruby's interpolation on a later leg.
   # The only Ruby interpolations are the guarded GUID and the guarded names.
-  # rubocop:disable Minitest/MultipleAssertions
   def test_the_script_never_interpolates_remote_values_in_ruby
     script = subject.build_owner_nodes_script(id: GUID, owner_nodes: %w[hv-node1])
 
@@ -177,7 +178,6 @@ class UnitClusterRoleOwnerNodesWriteTest < Minitest::Test
     refute_includes script, "-Name '#{GUID}'"
     refute_includes script, "-Group '#{GUID}'"
   end
-  # rubocop:enable Minitest/MultipleAssertions
 
   [nil, '', 'not-a-guid', '00000000-0000-0000-0000-000000000000'].each_with_index do |bad, i|
     define_method("test_the_script_refuses_an_id_that_would_unfilter_it_#{i}") do
@@ -191,7 +191,6 @@ class UnitClusterRoleOwnerNodesWriteTest < Minitest::Test
 
   # applied is believed only when the fresh read-back EQUALS the wanted set —
   # order and case being the two things the cluster is measured not to preserve.
-  # rubocop:disable Minitest/MultipleAssertions
   def test_an_applied_verdict_with_an_agreeing_read_back_is_the_only_success
     assert subject.parse_owner_nodes_write(
       verdict(result: 'applied', wanted: %w[hv-node1 hv-node2], actual: %w[hv-node2 hv-node1]),
@@ -206,11 +205,9 @@ class UnitClusterRoleOwnerNodesWriteTest < Minitest::Test
       wanted: []
     )
   end
-  # rubocop:enable Minitest/MultipleAssertions
 
   # A read-back that names a different set than the one written is the silent
   # no-stick this verdict exists to catch — a refused answer, not a success.
-  # rubocop:disable Minitest/MultipleAssertions
   def test_an_applied_verdict_with_a_disagreeing_read_back_is_refused
     [%w[hv-node2], %w[hv-node1 hv-node2], %w[]].each do |actual|
       assert_raises(Fog::Hyperv::Errors::RolePropertyWriteRefused, "expected #{actual.inspect} refused") do
@@ -221,7 +218,6 @@ class UnitClusterRoleOwnerNodesWriteTest < Minitest::Test
       end
     end
   end
-  # rubocop:enable Minitest/MultipleAssertions
 
   # A null read-back means the owner read inside the shell failed — unknown,
   # and unknown is not agreement, even when the wanted set is the empty one.
@@ -291,7 +287,6 @@ class UnitClusterRoleOwnerNodesWriteTest < Minitest::Test
   # rubocop:enable Minitest/MultipleAssertions
 
   # The guards run client-side, before anything is built or dialled.
-  # rubocop:disable Minitest/MultipleAssertions
   def test_the_real_request_refuses_a_bad_owners_list_before_the_wire
     assert_raises(ArgumentError) do
       @real.set_cluster_virtual_machine_role_owner_nodes(id: GUID, owner_nodes: nil)
@@ -301,7 +296,6 @@ class UnitClusterRoleOwnerNodesWriteTest < Minitest::Test
     end
     assert_empty @real.cmd_calls
   end
-  # rubocop:enable Minitest/MultipleAssertions
 
   def test_the_real_request_refuses_a_bad_id_before_the_wire
     assert_raises(Fog::Hyperv::Errors::InvalidRoleIdentifier) do
