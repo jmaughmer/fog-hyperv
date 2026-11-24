@@ -45,9 +45,10 @@ module Fog
         ALLOWED_CHARS = /\A[\p{L}\p{N} .\-_:\\']+\z/
 
         # One path naming one location, returned as given: DestructivePath's
-        # whole answer (blank, non-string, list, wildcard), then the two things
-        # only containment cares about — the location is absolute, and no
-        # separator arrives in a form the root comparison would not see.
+        # whole answer (blank, non-string, list, wildcard), then the three things
+        # only containment cares about — the location is absolute, it carries no
+        # unresolved `..`, and no separator arrives in a form the root
+        # comparison would not see.
         def validate_contained_path!(value, request)
           Fog::Hyperv::Utils::DestructivePath.validate_destructive_path!(value, request)
 
@@ -63,6 +64,16 @@ module Fog
             raise Fog::Hyperv::Errors::InvalidDestructivePath,
                   "#{request} refuses a path that is not absolute: `#{value}` names no fixed place — " \
                   'C:foo is drive-relative and resolves against the service process current directory'
+          end
+
+          # Same reason the root refuses it, and the caller-side reason is
+          # sharper: the literal string IS the name a caller will mount or
+          # delete next, and an unresolved `..` means the host resolves that
+          # name somewhere else than the string says.
+          if value.split('\\').include?('..')
+            raise Fog::Hyperv::Errors::InvalidDestructivePath,
+                  "#{request} refuses `..` in a path: nothing on this side resolves it, so the literal " \
+                  'location the caller names and the one the host lands on are not the same place'
           end
 
           value

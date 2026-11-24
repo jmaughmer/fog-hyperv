@@ -1,5 +1,16 @@
 ## Unreleased
 
+- The host pulls, instead of the caller pushing: fetch_url_to_path has the
+  Hyper-V host fetch an http(s) URL itself (spike 0.1 measured 148.9 MB/s against
+  0.54-0.75 MB/s for a base64 push through WinRM) and puts the integrity checks the
+  authenticated push got for free onto the anonymous GET, in order — HTTP 200 first,
+  then the caller's byte count, then the caller's sha256 computed on the host, all
+  while the file is still <path>.part, and only then Move-Item -Force onto the final
+  name, so a truncated or redirected body never wears the name a later step mounts.
+  Failed checks remove the .part and rethrow; any stdout other than the script's
+  PULLED=<bytes> raises PullVerdictUninterpretable. Declares the :file_pull
+  capability.
+
 - Eject one DVD drive by Id as its own idempotent request: eject_vm_dvd_drive runs
   Set-VMDvdDrive -Path $null -Passthru against the named drive with no media or
   existence check first, so a detach that retries after an already-empty drive gets

@@ -123,6 +123,13 @@ module Fog
       # not delete at all, on a guess.
       class RemovalVerdictUninterpretable < ServiceError; end
 
+      # fetch_url_to_path's script ends by printing PULLED=<bytes> and nothing
+      # else, so any other stdout — empty, a stray object, an error that printed
+      # instead of throwing — leaves "how many verified bytes landed" unknown,
+      # and a caller that staged the file on the strength of it would mount a
+      # pull this request cannot describe.
+      class PullVerdictUninterpretable < ServiceError; end
+
       # A host-shaped input — the host option that composes an endpoint, the
       # endpoint URL itself, or a name about to be composed into an endpoint —
       # carried something outside the host shape: a shell metacharacter, a
@@ -268,12 +275,25 @@ module Fog
     # remove_item does on a repeated cleanup. A folder is refused, not deleted.
     # Anything else the script could not have printed raises
     # RemovalVerdictUninterpretable rather than being read as "nothing to do".
+    # `:file_pull` means the host can fetch a URL itself instead of receiving it
+    # through WinRM: fetch_url_to_path has the Hyper-V host pull an http(s) URL
+    # (spike 0.1: 148.9 MB/s against 0.54-0.75 MB/s for a base64 push) and puts
+    # the integrity checks the authenticated push got for free onto the anonymous
+    # GET, in a measured order — HTTP status 200 first (a 3xx under
+    # -MaximumRedirection 0 is not trusted to throw on its own), then the
+    # caller's byte count, then the caller's sha256 computed on the host, all
+    # while the file is still <path>.part, and only then Move-Item -Force onto
+    # the final name, so a truncated or redirected body never wears the name a
+    # later step will mount. The expectations travel over WinRM, never in the
+    # URL; a failed check removes the .part and rethrows; any stdout other than
+    # the script's final PULLED=<bytes> raises PullVerdictUninterpretable rather
+    # than being read as a successful pull.
     # A caller on an older gem sees no constant here and must treat every fork
     # behaviour as absent.
     CAPABILITIES = %i[tri_state_cluster exact_host_connection literal_path_destructive stdout_json_hygiene
                       input_hardening cluster_capacity_projection cluster_role_failback
                       cluster_role_owner_nodes cluster_role_owner_nodes_write
-                      contained_file_removal].freeze
+                      contained_file_removal file_pull].freeze
 
     service(:compute, 'Compute')
 
