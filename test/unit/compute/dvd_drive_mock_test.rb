@@ -155,14 +155,15 @@ class UnitDvdDriveMockTest < Minitest::Test
 
     # fog-hyperv models track their own diff: the caller assigns the attribute
     # and update() sends only what changed (changed! guards every field). The
-    # model merges the request answer back, and that answer is the pre-change
-    # drive — so what a caller just wrote is NOT confirmed by the model object
-    # afterwards, and the re-read below is what confirms it.
+    # request answer is the pre-change drive (measured), so update() does not
+    # merge it — it re-reads the drive. Under the Mock that re-read answers the
+    # stateless fixture, which holds no media; against a host, this is exactly
+    # where the mount would show.
     drive.path = ISO
     drive.update
 
     assert_nil drive.path,
-               'the merge-back carries the host pre-change answer, so the model cannot confirm its own write'
+               'under the Mock the re-read answers the fixture, which holds no media; a host would show the ISO here'
 
     reread = @client.dvd_drives(vm_id: VM_ID).get(DRIVE_ID)
 

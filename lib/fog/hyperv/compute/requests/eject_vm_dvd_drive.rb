@@ -25,9 +25,11 @@ class Fog::Hyperv::Compute
     # back — the PR-1 lab measurement saw exactly that answer from the real host.
     # Claiming the key carries the nil into the rendered parameters, where it
     # binds as -Path $null, which is the eject. A drive Id the VM does not have
-    # raises from Get-VMDvdDrive -Id, which is the honest refusal: eject "this
-    # drive" on a VM that never had it is a caller error, not something to answer
-    # as already-done.
+    # leaves $DVD null — the Id filter is a Where-Object over Get-VMDvdDrive,
+    # not a -Id the cmdlet answers — and the piped Set-VMDvdDrive then fails
+    # binding that null input under Stop. That is the honest refusal: eject
+    # "this drive" on a VM that never had it is a caller error, not something
+    # to answer as already-done.
     def eject_vm_dvd_drive(id:, vm_id:, computer_name: nil, **_options)
       run_cmdlist(
         [

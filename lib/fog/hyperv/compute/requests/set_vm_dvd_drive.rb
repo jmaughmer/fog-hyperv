@@ -18,15 +18,19 @@ class Fog::Hyperv::Compute
   # is: the drive as it was BEFORE the change (an eject answered the file the
   # eject had just released, while the next fresh read of the same drive already
   # answered it gone — BD-EJ3-REQUEST-ANSWER vs BD-EJ3-GET-AFTER). So the Mock
-  # answers the fixture drive unchanged, and DvdDrive#update's merge-back hands
-  # the model the pre-change state: a caller that needs the after state re-reads
-  # the drive, which is the only answer the host guarantees. The Mock used to
-  # "reflect the caller's -Path" instead, a politeness no real host makes.
+  # answers the fixture drive unchanged, and DvdDrive#update does not merge that
+  # answer either — merging the pre-change drive (and resetting @old from it,
+  # which merge_attributes does) is what made a following eject look unchanged.
+  # The model re-reads the drive instead, which is the only host answer that
+  # describes the write. The Mock used to "reflect the caller's -Path" instead,
+  # a politeness no real host makes.
   #
-  # A drive Id the VM does not have answers nil. The Real raises PSError there,
-  # because Get-VMDvdDrive -Id fails; a Mock that raised the same thing would need
-  # a transport error to say "no such drive", and the callers that matter already
-  # branch on nil from the read path.
+  # A drive Id the VM does not have answers nil. The Real raises there: the Id
+  # filter is a Where-Object over Get-VMDvdDrive rather than a -Id the cmdlet
+  # answers itself, so a drive the VM does not have leaves $DVD null and the
+  # piped Set-VMDvdDrive fails binding that null input under Stop. A Mock that
+  # raised the same thing would need a transport error to say "no such drive",
+  # and the callers that matter already branch on nil from the read path.
   class Mock
     def set_vm_dvd_drive(**options)
       requires options, :id, :vm_id

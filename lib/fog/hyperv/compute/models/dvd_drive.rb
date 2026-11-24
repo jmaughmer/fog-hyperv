@@ -80,19 +80,27 @@ class Fog::Hyperv::Compute
       changes[:path] = path if changed? :path
       return self unless changes.any?
 
-      merge_attributes(
-        service.set_vm_dvd_drive(
-          computer_name: old.computer_name,
-          vm_id: old.vm_id,
-          id: old.id,
+      service.set_vm_dvd_drive(
+        computer_name: old.computer_name,
+        vm_id: old.vm_id,
+        id: old.id,
 
-          allow_unverified_paths: allow_unverified_paths,
-          **changes,
+        allow_unverified_paths: allow_unverified_paths,
+        **changes,
 
-          _always_include: changes.keys,
-          _return_fields: self.class.attributes
-        )
+        _always_include: changes.keys,
+        _return_fields: self.class.attributes
       )
+      # Set-VMDvdDrive -Passthru answers the drive as it was BEFORE the change —
+      # measured on the lab node: an eject's answer carried the file the eject
+      # had just released while the next fresh read already answered it gone.
+      # Merging that answer here would also reset @old from it (the fork's
+      # merge_attributes does), leaving the model holding the pre-change drive
+      # as both its attributes and its diff baseline: a following eject would
+      # see no change and send no request at all. The drive is re-read instead —
+      # the fresh read is the only host answer that describes the write.
+      reload
+      self
     end
 
     # Remove the DVD drive from Hyper-V
