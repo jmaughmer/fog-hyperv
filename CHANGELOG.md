@@ -1,5 +1,93 @@
 ## Unreleased
 
+- build_pscall now honors the _always_include promise it already made: a nil the
+  caller claimed survives the arg filter and rides the JSON parameter round-trip
+  the fork renders calls through, binding as -Name $null at the splat. It did not
+  used to: a later compact dropped every nil regardless of the claim, so a request
+  whose whole verb is a deliberate nil reached the host as a cmdlet call without
+  that parameter — the PR-1 lab measurement watched eject_vm_dvd_drive answer a
+  still-mounted drive, file still locked, because its -Path $null had been
+  compacted away. Unclaimed nils still drop exactly as before. The blast radius
+  is every model that ever sends a deliberate nil through a claimed key:
+  HardDrive, ComPort and FloppyDrive #update with path = nil now send
+  -Path $null where the old compact sent no -Path at all — for the DVD drive
+  that null is the measured eject; for those three the null-write itself is
+  not yet measured on a lab node.
+
+- The host pulls, instead of the caller pushing: fetch_url_to_path has the
+  Hyper-V host fetch an http(s) URL itself (spike 0.1 measured 148.9 MB/s against
+  0.54-0.75 MB/s for a base64 push through WinRM) and puts the integrity checks the
+  authenticated push got for free onto the anonymous GET, in order — HTTP 200 first,
+  then the caller's byte count, then the caller's sha256 computed on the host, all
+  while the file is still <path>.part, and only then Move-Item -Force onto the final
+  name, so a truncated or redirected body never wears the name a later step mounts.
+  Failed checks remove the .part and rethrow; any stdout other than the script's
+  PULLED=<bytes> raises PullVerdictUninterpretable. The signature names the five
+  keywords the script reads and takes no catch-all, so an unknown or misspelled
+  keyword (computer_nmae:) raises ArgumentError at the call instead of being
+  swallowed and the pull running against the default endpoint.
+  Declares the :file_pull capability.
+
+- Eject one DVD drive by Id as its own idempotent request: eject_vm_dvd_drive runs
+  Set-VMDvdDrive -Path $null -Passthru against the named drive with no media or
+  existence check first, so a detach that retries after an already-empty drive gets
+  the same clean answer instead of a false failure; the passthru answer is the
+  drive as it was BEFORE the eject — the PR-1 measurement watched an eject's answer
+  carry the file the eject had just released while the next fresh read already
+  answered it gone — so a caller that needs the after state re-reads the drive.
+  Its Mock delegates to set_vm_dvd_drive's with path forced
+  nil, and a drive the VM does not have answers nil there the way the set's does.
+
+- Read and reorder a Gen2 VM's UEFI boot order without losing what was not asked
+  for: get_vm_boot_order answers the firmware's entries as an ordered list (position,
+  BootType, the Device rendering, the device Id, the File entry's FirmwarePath), and
+  set_vm_boot_order takes a sequence of class names — optionally one DvdDrive named by
+  Id — and writes the complete expected order in ONE Set-VMFirmware. Spike 0.4 measured
+  why the obvious shapes fail: a subset write silently deleted the lab VM's own hard
+  drive from its boot order, and a retry that re-inserts a device already present
+  duplicates it. So the script classifies entries by the Device rendering first and
+  BootType only as the fallback (the PR-1 lab measurement caught the first version
+  of this rule inverted: a NIC entry answers BootType 'Network', so BootType-first
+  never matched a requested VMNetworkAdapter, the fetch branch added the same adapter
+  a second time, and the host refused the duplicate; a File entry is the case that
+  needs the fallback, its Device being null), matches a
+  requested drive by comparing its Id against each entry's Device.Id rather than by
+  object reference (a freshly fetched device object never reference-equals a boot entry's
+  Device), appends every entry it did not consume, and — if the read-back order is not
+  what it wrote — restores the captured original and raises rather than leaving the VM
+  half-reordered. Unknown or repeated classes, an empty order, and a non-DVD class named
+  by Id refuse before any traffic.
+
+- Answer the DVD-drive requests under Fog.mock!, so a plugin can drive one drive
+  through add, attach, read, eject and remove without a Hyper-V host: get_vm_dvd_drive's
+  Mock read a local named args that the method never defines (it takes **options), which
+  raised NameError on every mocked DVD read before it looked at the fixture beside it,
+  and it filtered only by vm_id so a drive named by Id was answered by whichever drive
+  the VM had. Add/Set/Remove had no Mock at all and fell through to method_missing,
+  which raises MockNotImplemented because a passthru cmdlet has no fixture of its own;
+  they now answer from get_vm_dvd_drive's fixture rather than growing three
+  near-identical JSON files, with Set answering the drive as it was BEFORE the
+  change — the shape the lab measured Set-VMDvdDrive -Passthru to answer on a
+  real Gen2 cluster VM (an eject's answer carried the file the eject had just
+  released while the next fresh read already answered it gone) — so
+  DvdDrive#update never merges that answer: the model re-reads the drive after
+  the write (a merge-back left it holding the pre-change state and diffing
+  against it, which made a following eject see no change and send no request at
+  all), so what the model carries is the host's fresh answer.
+
+- Delete one file inside a directory the caller names, and answer whether there
+  was anything to delete: remove_file takes `root` as a required argument and
+  refuses, before any wire traffic, every path that is not that directory or one
+  literal location inside it (relative or drive-relative, wildcarded, carrying
+  `/` as a separator, carrying `..`, or outside its root), then tests for the
+  file and deletes it in the SAME script. Absence answers false instead of
+  raising PSError the way remove_item does on a repeated cleanup — measured on
+  the lab node, where Remove-Item of a missing path raised even under
+  -ErrorAction SilentlyContinue — which is what a caller that cleans up the same
+  path twice needs. A folder is refused rather than deleted, and an answer the
+  script could not have printed raises RemovalVerdictUninterpretable instead of
+  being read as "nothing to do". CAPABILITIES gains contained_file_removal.
+
 - Carry the cluster's preferred owners into the clustered-role read:
   build_read_script now asks Get-ClusterOwnerNode of every matched group and
   rows come back with preferredNodeNames, mirrored by the model's

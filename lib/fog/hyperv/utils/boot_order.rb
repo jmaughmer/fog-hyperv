@@ -1,0 +1,265 @@
+# frozen_string_literal: true
+
+# rubocop:disable Metrics/ModuleLength
+
+# file-scoped for the same reason winrm.rb carries it: this module's length is
+# the size of the PowerShell it renders, and the fork's other script-builder
+# utils (cluster_capacity, cluster_role) already live over the limit
+
+module Fog::Hyperv
+  module Utils
+    # The UEFI boot-order scripts behind get_vm_boot_order / set_vm_boot_order.
+    #
+    # Spike 0.4 measured the two failure modes these scripts exist to avoid. One:
+    # Set-VMFirmware -BootOrder replaces the whole order, so writing only the
+    # devices a caller cares about silently deletes everything else — on the lab
+    # VM that wrote the hard drive out of its own boot order (the read-back came
+    # back N=1). Two: a device object fetched fresh does not reference-equal the
+    # Device inside a boot entry, so "is it already in the order" has to compare
+    # identifiers, and the only stable one is the device Id.
+    #
+    # So every script here classifies entries by the class rendered from the
+    # entry's Device first ("DvdDrive (...)", "VMNetworkAdapter (...)"), falling
+    # back to BootType only when that rendering is empty — a File entry's Device
+    # is null and needs the fallback, while a NIC answers BootType 'Network',
+    # which is why BootType-first cannot match a requested adapter (the PR-1
+    # lab measurement) — matches requested devices by .Device.Id, and — in the
+    # write script — restores the captured original and raises when the
+    # read-back disagrees. The restore and the read-back are both guarded: a
+    # restore that itself throws is reported inside the mismatch error instead
+    # of replacing it, and a read-back that throws after the write still puts
+    # the captured order back, so a failed attempt never leaves the VM
+    # half-reordered on an order nobody verified.
+    module BootOrder
+      # Classes a caller may request. They are the tokens the device rendering
+      # shows ("HardDiskDrive (Name = ...)"), measured for hard drives and
+      # network adapters in spike 0.4, and the PR-1 lab measurement settled the
+      # third: a DVD boot entry renders its Device as DvdDrive, NOT the
+      # cmdlet-family DVDDrive. The measurement also caught the classifier: a
+      # NIC entry answers BootType 'Network', so a classifier keyed on BootType
+      # first never matched the requested VMNetworkAdapter, the fetch branch
+      # added the same adapter again, and Set-VMFirmware refused the duplicate
+      # with WMI's Element not found (0x80070490) — on the host, twice. A fog
+      # class token is what fog-class prints, and fog-class keys on the Device
+      # rendering because it is the only string naming the class; a token that
+      # does not equal fog-class output is not a no-op, it is a duplicate. File
+      # and EFI entries are preserved but not requestable: a File boot entry is
+      # a firmware path, not a device this API addresses.
+      REQUESTABLE = %w[HardDiskDrive DvdDrive VMNetworkAdapter].freeze
+
+      # Decode a script's own ConvertTo-Json body the way the transport decodes
+      # the answers it parses: uncamelized, symbol-keyed rows. The boot-order
+      # scripts render JSON themselves (the batch has to end in one render no
+      # matter which branch wrote it), so the batch runs with the transport's
+      # JSON skipped and the shape rules live here instead.
+      def self.decode(out)
+        body = out.stdout.to_s.strip
+        return [] if body.empty?
+
+        Fog::Hyperv.uncamelize(Fog::JSON.decode(body))
+      end
+
+      # Validate and normalize a caller's boot-order request before any traffic:
+      # what the host could not honour anyway should not reach the host. The
+      # shape rules mirror the script's: whole groups (a named Id only for
+      # DvdDrive, and a named Id must actually be one — the script reads an
+      # empty Id as "the whole class", so a nil or blank one would move every
+      # drive of the class while looking like a specific one), one mention of a
+      # class (a repeat would reorder the first group it matched and then insert
+      # a second copy), and at least one entry (an empty order would write the
+      # VM's boot order down to nothing).
+      def self.normalize(order)
+        raise ArgumentError, 'order must be a non-empty Array of boot classes' unless order.is_a?(Array) && order.any?
+
+        entries = order.map do |element|
+          case element
+          when String, Symbol
+            [element.to_s, nil]
+          when Hash
+            raise ArgumentError, "each order entry is a class name or one 'Class' => id pair: #{element.inspect}" unless element.size == 1
+
+            klass, id = element.first
+            if id.nil? || id.to_s.strip.empty?
+              raise ArgumentError, "#{klass} => #{id.inspect} names no device: the script reads an " \
+                                   'empty Id as the whole group, so pass the bare class name for that'
+            end
+
+            [klass.to_s, id]
+          else
+            raise ArgumentError, "each order entry is a class name or one 'Class' => id pair: #{element.inspect}"
+          end
+        end
+
+        names = entries.map(&:first)
+        unknown = names - REQUESTABLE
+        raise ArgumentError, "unknown boot order class #{unknown.first.inspect}; requestable: #{REQUESTABLE.join(', ')}" if unknown.any?
+
+        repeated = names.tally.find { |_, count| count > 1 }
+        raise ArgumentError, "order repeats #{repeated[0]}" if repeated
+
+        entries.map do |klass, id|
+          if !id.nil? && klass != 'DvdDrive'
+            raise ArgumentError, "#{klass} moves as a whole group and cannot be named by Id; only DvdDrive can"
+          end
+
+          { 'Class' => klass, 'Id' => id }
+        end
+      end
+
+      class << self
+        # Identity of a boot entry or a bare device, as one string. For an entry:
+        # the FirmwarePath for File, the Device's Id for anything with a Device.
+        # For a device object fetched outside the order: its own Id. The write
+        # script compares want/got sequences built through this same function on
+        # both sides, so the two sides cannot disagree by construction.
+        def identity_functions
+          <<~SCRIPT
+            function fog-class {
+              param($e)
+              if ($e.PSObject.Properties.Name -contains 'BootType') {
+                $fogT = ("$($e.Device)" -split ' ')[0]
+                if ($fogT) { $fogT } else { "$($e.BootType)" }
+              } else {
+                "$($e)"
+              }
+            }
+            function fog-id {
+              param($x)
+              if ($x.PSObject.Properties.Name -contains 'BootType') {
+                if ($x.BootType -eq 'File') { "$($x.FirmwarePath)" }
+                elseif ($null -ne $x.Device) { "$($x.Device.Id)" }
+                else { '' }
+              } else {
+                "$($x.Id)"
+              }
+            }
+          SCRIPT
+        end
+
+        def rows_render
+          <<~SCRIPT
+            $fogI = 0
+            ConvertTo-Json -Compress -InputObject @(foreach ($fogE in $fogBoot) {
+              $fogI++
+              [PSCustomObject]@{
+                Position     = $fogI
+                BootType     = "$($fogE.BootType)"
+                DeviceText   = "$($fogE.Device)"
+                DeviceId     = (fog-id $fogE)
+                FirmwarePath = "$($fogE.FirmwarePath)"
+              }
+            })
+          SCRIPT
+        end
+
+        # Read the current UEFI boot order as an ordered, flat list. Gen1 refuses
+        # on its own: Get-VMFirmware errors there, and $ErrorActionPreference is
+        # Stop, so the caller gets a PSError naming the cmdlet's Gen 1 complaint.
+        def build_read_script
+          <<~SCRIPT
+            $fogBoot = @(($VM | Get-VMFirmware).BootOrder)
+            #{identity_functions}
+            #{rows_render}
+          SCRIPT
+        end
+
+        # Reorder in one script: capture, compute, write once, read back, restore
+        # and raise on mismatch. requests is the caller's sequence, already
+        # validated by the request: [{Class:, Id: nil-or-string}, ...] in the
+        # desired order. The script is assembled from two heredocs — the
+        # compute-and-write half and the verify-and-restore half — concatenated
+        # directly, so what reaches the host is one script, exactly as before the
+        # split; the seam is where the write stops being the caller's ask and
+        # starts being the host's answer.
+        def build_set_script(requests)
+          json = Fog::JSON.encode(requests).gsub("'", "''")
+
+          "#{write_half(json)}#{verify_half}"
+        end
+
+        # Capture the current order, compute the complete expected sequence
+        # (requested classes first, in the requested order — fetched devices when
+        # the order does not carry the class yet, since Set-VMFirmware takes the
+        # whole order and a requested device missing from it must still land —
+        # then every entry the request did not consume, in place), and write it
+        # in ONE Set-VMFirmware.
+        def write_half(json)
+          <<~SCRIPT
+            $fogFw = $VM | Get-VMFirmware
+            #{identity_functions}
+            $fogOrig = @($fogFw.BootOrder)
+            $fogReq = ConvertFrom-Json -InputObject '#{json}'
+            $fogExp = New-Object System.Collections.Generic.List[object]
+            $fogWant = New-Object System.Collections.Generic.List[string]
+            $fogTaken = New-Object System.Collections.Generic.List[object]
+            foreach ($fogR in @($fogReq)) {
+              $fogCls = $fogR.Class
+              $fogWanted = "$($fogR.Id)"
+              $fogMatch = @($fogOrig | Where-Object {
+                (-not $fogTaken.Contains($_)) -and
+                ((fog-class $_) -eq $fogCls) -and
+                (($fogWanted -eq '') -or ((fog-id $_) -eq $fogWanted))
+              })
+              if ($fogMatch.Count -eq 0) {
+                if ($fogCls -eq 'HardDiskDrive') { $fogDevs = @($VM | Get-VMHardDiskDrive) }
+                elseif ($fogCls -eq 'DvdDrive') {
+                  if ($fogWanted -ne '') {
+                    $fogDevs = @($VM | Get-VMDvdDrive | Where-Object { $_.Id -eq $fogWanted })
+                    if ($fogDevs.Count -eq 0) { throw "set_vm_boot_order refuses: DvdDrive $fogWanted is not attached to this VM" }
+                  } else {
+                    $fogDevs = @($VM | Get-VMDvdDrive)
+                  }
+                } else { $fogDevs = @($VM | Get-VMNetworkAdapter) }
+                if ($fogDevs.Count -eq 0) { throw "set_vm_boot_order refuses: no $fogCls device on this VM to place" }
+                foreach ($fogD in $fogDevs) { $fogExp.Add($fogD); $fogWant.Add("$fogCls|$($fogD.Id)") }
+              } else {
+                foreach ($fogM in $fogMatch) {
+                  $fogTaken.Add($fogM)
+                  $fogExp.Add($fogM)
+                  $fogWant.Add((fog-class $fogM) + '|' + (fog-id $fogM))
+                }
+              }
+            }
+            foreach ($fogE in $fogOrig) {
+              if (-not $fogTaken.Contains($fogE)) {
+                $fogExp.Add($fogE)
+                $fogWant.Add((fog-class $fogE) + '|' + (fog-id $fogE))
+              }
+            }
+            $VM | Set-VMFirmware -BootOrder $fogExp.ToArray()
+          SCRIPT
+        end
+
+        # Read the full ordered identity sequence back — guarded, because a
+        # read-back that throws after a successful write must still restore —
+        # and on any mismatch restore the captured order best-effort (guarded
+        # too: a restore that itself throws reports inside the mismatch error
+        # rather than replacing it) and raise naming both facts. The write above
+        # is deliberately NOT guarded: if that single Set-VMFirmware throws, the
+        # error reaches the caller raw, because whether a refused write leaves
+        # the order intact is a host fact this project has never measured, and a
+        # restore invented around an unmeasured atomicity could itself be the
+        # thing that reorders the VM.
+        def verify_half
+          <<~SCRIPT
+            $fogBoot = @()
+            $fogReadFail = $null
+            try { $fogBoot = @(($VM | Get-VMFirmware).BootOrder) } catch { $fogReadFail = $_.Exception.Message }
+            $fogGot = @($fogBoot | ForEach-Object { (fog-class $_) + '|' + (fog-id $_) })
+            if ($fogReadFail -or (($fogGot -join ';') -ne ($fogWant -join ';'))) {
+              $fogRestoreErr = $null
+              try { $VM | Set-VMFirmware -BootOrder $fogOrig } catch { $fogRestoreErr = $_.Exception.Message }
+              $fogWhy = if ($fogReadFail) { "the read-back itself failed: $fogReadFail" } else \
+                        { "the read-back order ($($fogGot -join ';')) is not what was written ($($fogWant -join ';'))" }
+              $fogBack = if ($fogRestoreErr) { "RESTORING THE PREVIOUS ORDER ALSO FAILED: $fogRestoreErr" } else \
+                         { 'the previous order has been restored' }
+              throw ("set_vm_boot_order: $fogWhy; $fogBack")
+            }
+            #{rows_render}
+          SCRIPT
+        end
+      end
+    end
+  end
+end
+# rubocop:enable Metrics/ModuleLength
