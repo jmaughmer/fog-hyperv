@@ -209,10 +209,17 @@ class UnitClusterCapacityTest < Minitest::Test
     assert_equal [], subject.parse_capacity_read(envelope(volumes: []))
     # A null rather than an empty array is the same answer in a different coat.
     assert_equal [], subject.parse_capacity_read(Fog::JSON.encode(clusterName: 'HV-CL01', clusterId: CLUSTER_ID, volumes: nil))
-    # A list whose every entry is null holds no volume: the same silence again.
-    assert_equal [], subject.parse_capacity_read(envelope(volumes: [nil]))
     # The expected-cluster ask is answered the same way once its witness matched.
     assert_equal [], subject.parse_capacity_read(envelope(volumes: []), cluster_id: CLUSTER_ID)
+  end
+
+  # A list whose every entry is null holds no volume: the third coat of the same
+  # silence (the projection itself never emits one — a real answer carries a
+  # hashtable per CSV — but the parser's flatten/compact reads it as empty, and
+  # answering zero for it is the same policy as the empty list).
+  def test_an_all_null_volume_list_is_the_same_silence
+    assert_equal [], subject.parse_capacity_read(envelope(volumes: [nil]))
+    assert_equal [], subject.parse_capacity_read(envelope(volumes: [nil, nil]))
   end
 
   # The single-volume answer must still read as a list: ConvertTo-Json on this
