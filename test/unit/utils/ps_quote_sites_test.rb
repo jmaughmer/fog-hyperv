@@ -136,6 +136,7 @@ class UnitPsQuoteSitesTest < Minitest::Test
     script = Fog::Hyperv::Utils::BootOrder.build_set_script(requests)
 
     json = Fog::JSON.encode(requests)
+
     assert_includes script, "$fogReq = ConvertFrom-Json -InputObject '#{doubled(json)}'"
   end
 
@@ -148,6 +149,7 @@ class UnitPsQuoteSitesTest < Minitest::Test
     script = Fog::Hyperv::Utils::BootOrder.build_set_script(requests)
 
     json = Fog::JSON.encode(requests)
+
     assert_includes script, "$fogReq = ConvertFrom-Json -InputObject '#{json}'"
   end
 
@@ -159,6 +161,7 @@ class UnitPsQuoteSitesTest < Minitest::Test
 
     refute_nil carrier, 'the PS 5 branch carries the option map as a JSON literal'
     json = Fog::JSON.encode('Name' => "web#{CURLY}1")
+
     assert_includes carrier, "$FogJsonObject = '#{doubled(json)}'"
   end
 
@@ -167,6 +170,7 @@ class UnitPsQuoteSitesTest < Minitest::Test
     carrier = lines.find { |l| l.include?('ConvertFrom-Json -AsHashtable') }
 
     json = Fog::JSON.encode('Name' => "O'Brien")
+
     assert_includes carrier, "ConvertFrom-Json -AsHashtable '#{doubled(json)}'"
   end
 
@@ -177,6 +181,7 @@ class UnitPsQuoteSitesTest < Minitest::Test
     carrier = lines.find { |l| l.include?('$FogJsonObject = ') }
 
     json = Fog::JSON.encode('Path' => 'C:\VMs')
+
     assert_includes carrier, "$FogJsonObject = '#{json}'"
   end
 

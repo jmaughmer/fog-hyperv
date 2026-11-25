@@ -47,6 +47,7 @@ class UnitPsQuoteTest < Minitest::Test
 
   def test_text_with_no_quote_characters_is_returned_byte_for_byte
     plain = '{"Class":"DvdDrive","Id":"IDE (0,0)"}'
+
     assert_equal plain, subject.escape(plain)
   end
 

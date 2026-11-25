@@ -19,7 +19,7 @@ module Fog::Hyperv::Utils::Powershell
       # are left exactly as the JSON encoder wrote them: a single-quoted
       # literal does not process them, and ConvertFrom-Json expects the
       # encoder's own doubling.
-      json = Fog::Hyperv::Utils::PsQuote.escape(Fog::JSON.encode ps_opts)
+      json = Fog::Hyperv::Utils::PsQuote.escape(Fog::JSON.encode(ps_opts))
       if _ps_version >= 6
         ["$#{_optmap_name} = ConvertFrom-Json -AsHashtable '#{json}'"]
       else
