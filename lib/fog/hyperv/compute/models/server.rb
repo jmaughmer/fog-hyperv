@@ -500,14 +500,22 @@ class Fog::Hyperv::Compute
     #     that want it.
     #
     #   Memoises every answer including the negative, and checks the memo
-    #   before anything else: the first call pays the endpoint probes the
-    #   question needs (Real#supports_clusters? is a live root/mscluster
-    #   round trip, and a guard that ran before the memo check billed it to
-    #   every call), while every later call on this model is free. An answer
-    #   therefore outlives a gate that flips after it was given — the
-    #   endpoint gave it while it could. #reload is what re-asks: it drops
-    #   this memo and #cluster_role's. Fog's own persistence methods read
-    #   #attributes, so the memo never leaks into anything saved.
+    #   before anything else (Real#supports_clusters? is a live
+    #   root/mscluster round trip, and for a model the guard could ask
+    #   about, running it before the memo check billed it to every call —
+    #   the count this PR changes). A first call still pays the probes the
+    #   question needs: one when a role read has already populated
+    #   #cluster_role's memo, two when this call is what warms it —
+    #   #cluster_role's own askable-guard dials on its cold read, exactly
+    #   as base paid. Every later call on a model that HOLDS an answer is
+    #   free; a model that was never answered keeps probing per call on an
+    #   endpoint that cannot answer it, as it always did (the no-id model
+    #   short-circuits before any probe, also as it always did). An answer
+    #   therefore outlives a gate that flips after it
+    #   was given — the endpoint gave it while it could. #reload is what
+    #   re-asks: it drops this memo and #cluster_role's. Fog's own
+    #   persistence methods read #attributes, so the memo never leaks into
+    #   anything saved.
     #
     #   The name matches the IsClustered property of every payload this model reads,
     #   which is why it stays non-predicate despite returning the tri-state: it is a
@@ -540,13 +548,16 @@ class Fog::Hyperv::Compute
 
     # Reload the VM attributes from the Hyper-V server.
     #
-    # A reload also drops the cluster memos (#cluster_role and #is_clustered):
-    # they are the machine's answers, not the payload's, and a model held
-    # across a failover must re-ask them rather than repeat them — the
-    # staleness #owner_node documents is exactly what a memo that survived
-    # reload would reintroduce. They are dropped BEFORE the read, so even a
-    # reload that finds nothing does not leave a stale cluster answer
-    # standing: the next cluster question goes to the endpoint again.
+    # A reload also drops the cluster memos (#cluster_role and
+    # #is_clustered): they are the machine's answers, not the payload's, and
+    # a model held across a failover must re-ask them rather than repeat
+    # them — the staleness #owner_node documents is exactly what a memo that
+    # survived reload would reintroduce. They are dropped BEFORE the read,
+    # so even a reload that finds nothing does not leave a stale cluster
+    # answer standing: the next cluster question goes to the endpoint again.
+    # #cluster — the association the collection handed the model when it
+    # built it — is not one of these answers and survives by design: a
+    # failover moves a role, not the cluster.
     # @return [self] if model successfully reloaded
     # @return [nil] if something went wrong or the model was not found
     def reload

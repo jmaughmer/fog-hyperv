@@ -3,9 +3,10 @@
 - The Server model's cluster memos now live the lifetime their docs promise:
   #is_clustered checks its memo BEFORE it asks whether cluster questions can
   be asked at all — that guard is a live root/mscluster round trip (Real#
-  supports_clusters? dials on every call), and running it first billed the
-  dial to every read, including reads of an answer the model had been given
-  seconds ago. A first call still pays the probes the question needs. And
+  supports_clusters? dials on every check, and the guard short-circuits only
+  before an id is set), and running it first billed the dial to every read
+  on a model with an id, including reads of an answer the model had been
+  given seconds ago. A first call still pays the probes the question needs. And
   #reload now drops the #cluster_role memo along with the tri-state's, before
   it re-reads the machine: a memo that survived reload made a model held
   across a failover keep answering owner_node with the pre-move node — the

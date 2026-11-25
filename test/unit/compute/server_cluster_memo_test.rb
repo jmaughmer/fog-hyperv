@@ -8,18 +8,19 @@ require 'test_helper'
 # tri-state #is_clustered — and this suite pins WHO may pay for them and WHEN
 # they are re-asked. Before this PR the guard that decides whether the cluster
 # question can be asked ran BEFORE the tri-state memo check, so every call to
-# is_clustered dialled root/mscluster over WinRM even when the answer had been
-# given seconds ago (Real#supports_clusters? is a WQL round trip; only this
-# model caches its outcome). And #reload refreshed the payload while leaving
-# @cluster_role in place — so a model held across a live migration re-merged
-# the machine's data and still answered the OLD owner_node, which is exactly
-# the staleness #owner_node exists to avoid.
+# is_clustered on a model with an id dialled root/mscluster over WinRM even
+# when the answer had been given seconds ago (Real#supports_clusters? is a
+# WQL round trip; only this model caches its outcome). And #reload refreshed
+# the payload while leaving @cluster_role in place — so a model held across a
+# live migration re-merged the machine's data and still answered the OLD
+# owner_node, which is exactly the staleness #owner_node exists to avoid.
 #
-# The contract now: the first call asks (once — cluster_role guards and
-# memoises), every later call on that model is free, and #reload is the one
-# thing that makes the model re-ask. A gate that flips AFTER an answer was
-# given (the endpoint stops answering cluster questions) does not erase the
-# answer — it was the endpoint's real answer while the endpoint could give it.
+# The contract now: the first call asks the role once (the capability gate
+# dials twice on the cold path, as on base), every later call on a model that
+# holds an answer is free, and #reload is the one thing that makes the model
+# re-ask. A gate that flips AFTER an answer was given (the endpoint stops
+# answering cluster questions) does not erase the answer — it was the
+# endpoint's real answer while the endpoint could give it.
 class UnitServerClusterMemoTest < Minitest::Test
   GUID = '2c60b75f-6437-4b39-b156-a90538413c1b'
   CLUSTERED_GUID = '20ff7fe3-fd54-425c-aa97-fbf3c2e7a868'
@@ -43,9 +44,9 @@ class UnitServerClusterMemoTest < Minitest::Test
   end
 
   # Counts endpoint probes for the rest of the test. Mock#supports_clusters?
-  # answers from the get_cluster fixture — the same fixture the Real probe
-  # would have read over WQL — so counting it counts the round trips a Real
-  # client of this build would pay.
+  # answers from the get_cluster fixture instead of dialling — the stand-in
+  # this fork gives the WQL probe a Real client pays over the wire — so
+  # counting it counts the round trips a Real client of this build would pay.
   def probe_counter
     counter = { n: 0 }
     @client.define_singleton_method(:supports_clusters?) do
@@ -58,14 +59,17 @@ class UnitServerClusterMemoTest < Minitest::Test
   # -- new behaviour (red on the base gem) -------------------------------------
 
   # The page-cost fix: one model answering the cluster question many times
-  # asks the endpoint about it once. On the base gem every call re-probed
-  # before its memo check, so this is exactly where the round trips pile up.
+  # re-dials the endpoint only for its first answer. On the base gem every
+  # call re-probed before its memo check, so this is exactly where the round
+  # trips pile up.
   def test_an_answered_model_never_re_asks_the_endpoint
     # rubocop:disable Minitest/MultipleAssertions
     server = plain_server
     counter = probe_counter
 
-    assert_same false, server.is_clustered # the first ask happens with no counter yet
+    # The counter is live for the first ask; it is zeroed on the next line
+    # so only the repeat reads below are measured.
+    assert_same false, server.is_clustered
     counter[:n] = 0
 
     assert_same false, server.is_clustered
@@ -117,6 +121,40 @@ class UnitServerClusterMemoTest < Minitest::Test
 
     assert_same true, vm.is_clustered
     assert_predicate vm, :clustered?
+  end
+
+  # A reload that finds NOTHING still re-asks: the memos are dropped before
+  # the payload read, so a failed reload (the machine could not be read)
+  # does not leave a stale cluster answer standing either.
+  def test_a_reload_that_finds_nothing_still_re_asks
+    # rubocop:disable Minitest/MultipleAssertions
+    vm = @client.servers.get('mockvm2')
+
+    assert_equal 'mock-node2', vm.owner_node # the fixture's owner
+
+    moved = {
+      name: 'Virtual Machine mockvm2',
+      owner_node: 'mock-node3',
+      vm_id: CLUSTERED_GUID,
+      virtual_machine_id: CLUSTERED_GUID
+    }
+    role_asks = { n: 0 }
+    @client.define_singleton_method(:get_vm) { |_options = {}| nil }
+    @client.define_singleton_method(:get_cluster_virtual_machine_role) do |_options = {}|
+      role_asks[:n] += 1
+      moved
+    end
+
+    assert_nil vm.reload # the payload read found nothing...
+    assert_equal 'mock-node3', vm.cluster_role.owner_node # ...but the answer was dropped anyway
+    assert_predicate vm, :clustered? # rides the same fresh read, asks no more
+    assert_equal 1, role_asks[:n]
+
+    counter = probe_counter
+
+    assert_same true, vm.is_clustered # its own memo is gone too: this goes to the endpoint
+    assert_equal 1, counter[:n] # its own guard's probe; cluster_role's fresh answer asks none
+    # rubocop:enable Minitest/MultipleAssertions
   end
 
   # -- pins: behaviour this PR must not lose (green on both trees) -------------
