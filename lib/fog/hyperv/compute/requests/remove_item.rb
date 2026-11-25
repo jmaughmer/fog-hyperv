@@ -16,11 +16,20 @@ class Fog::Hyperv::Compute
     # literal path is refused here rather than honoured under either render,
     # because the two renders disagree about what the name means and neither
     # answer is safe to pick silently.
+    #
+    # force: true rides by default (review F8): upstream always sent it, and
+    # the -LiteralPath rewrite dropped it without saying so.
+    # Without -Force the folder cleanup behind Server#destroy(true) dies on a
+    # hidden or read-only item — a read-only parent .vhdx, a file flagged by
+    # backup software — AFTER Remove-VM already succeeded. -Force never
+    # participated in the wildcard question the rewrite was about, and a
+    # caller can still dial it explicitly (later **options wins, exactly
+    # upstream's ordering).
     def remove_item(path:, computer_name: nil, **options)
       literal = Fog::Hyperv::Utils::DestructivePath.validate_destructive_path!(path, __method__)
 
       run_cmd 'Remove-Item', _target_computer: computer_name, _skip_json: true,
-                             literal_path: literal, **options
+                             literal_path: literal, force: true, **options
     end
   end
 end
