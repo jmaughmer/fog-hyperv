@@ -358,16 +358,19 @@ class UnitConnectionTest < Minitest::Test
 
   # FOG-27 (the caller side of review F11): a caller asking "is this node
   # name the machine behind this client?" is only as good as the names it
-  # has, and the URL host is '10' for 10.0.0.5. The endpoint ANSWERS its
-  # own names at connect (the tests above) — the client must now answer
-  # what it learned, as one frozen list, so the identity rule can use the
-  # names the machine reported for itself. A client that never learned a
-  # name answers [] and the caller degrades to the URL: never an error,
-  # never a guess.
+  # has, and matched as a node name, the URL host of 10.0.0.5 reduces to
+  # its first label, '10'. The endpoint ANSWERS its own names at connect
+  # (the tests above) — the client must now answer what it learned, as
+  # one frozen list, so the identity rule can use the names the machine
+  # reported for itself. A client that never learned a name answers []
+  # and the caller degrades to the URL: never an error, never a guess.
 
   # A Real client over the REAL connect (this is the connect under test):
   # every wire answer, discovery included, is canned on the class so the
-  # connect that initialize runs can complete without a wire.
+  # connect that initialize runs can complete without a wire. Discovery
+  # is connect's only run_cmd; the stub answers any run_cmd, so a future
+  # second one would be absorbed here silently and would need its own
+  # pin.
   class CannedWireClient < Fog::Hyperv::Compute::Real
     class << self
       attr_accessor :discovery_stdout

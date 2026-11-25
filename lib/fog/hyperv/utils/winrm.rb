@@ -198,12 +198,13 @@ module Fog::Hyperv::Utils::Winrm
   # arrived (see discover_host_names: the connection asked even before
   # FOG-27; FOG-27 only keeps the answer). This is the endpoint's SELF
   # report, for callers that must match a node name against "the machine
-  # behind this client": a URL host is '10' for an IP endpoint of
-  # 10.0.0.5, and a CNAME names no node at all. [] until the endpoint
-  # connection stands, and [] forever for a host that will not answer for
-  # itself — the caller degrades to the URL, it never fails and is never
-  # left to guess. Frozen and shared: the answer belongs to the
-  # connection, not to any one caller.
+  # behind this client": matched as a node name, the URL host of an IP
+  # endpoint like 10.0.0.5 reduces to its first label — '10' — and a
+  # CNAME names no node at all. [] until the endpoint connection stands,
+  # and [] forever for a host that will not answer for itself — the
+  # caller degrades to the URL, it never fails and is never left to
+  # guess. Frozen and shared: the answer belongs to the connection, not
+  # to any one caller.
   #
   # @return [Array(String)] the names the endpoint answered for itself
   def local_host_names
