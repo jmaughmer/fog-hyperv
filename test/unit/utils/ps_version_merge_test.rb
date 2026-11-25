@@ -86,7 +86,7 @@ class UnitPsVersionMergeTest < Minitest::Test
       conn
     end
 
-    def discover_host_names(fqdn)
+    def discover_host_names(_fqdn)
       []
     end
   end
