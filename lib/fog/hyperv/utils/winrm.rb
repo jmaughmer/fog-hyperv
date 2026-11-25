@@ -61,9 +61,11 @@ module Fog::Hyperv::Utils::Winrm
   # when no advisory fires the router is invisible. The console-style TYPE:
   # prefix keeps each line as readable as the bare stdout render was.
   # InformationRecord is a separate arm because it (like 6>&1) does not exist
-  # before PowerShell 5.0 — naming an unresolvable type in -is makes PS 4
-  # write a runtime error per piped object and drop it, so the legacy router
-  # must not mention it.
+  # before PowerShell 5.0 — naming an unresolvable type in -is is documented
+  # to make PS 4 write a runtime error per piped object and drop it, so the
+  # legacy router must not mention it. (No PS 4 host is in the lab; the
+  # design is robust either way — the legacy router simply never names the
+  # type.)
   ADVISORY_ROUTER_HEAD = 'ForEach-Object { if ($_ -is [System.Management.Automation.WarningRecord] ' \
                          '-or $_ -is [System.Management.Automation.VerboseRecord] ' \
                          '-or $_ -is [System.Management.Automation.DebugRecord]'

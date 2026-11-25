@@ -11,10 +11,10 @@ require 'fog/hyperv/utils/winrm'
 # 0, $? true, empty stdout — so every read answered empty and every write
 # answered success. The merge and router are now version-gated: below 5 the
 # call gets the 3/4/5 merges (valid since PowerShell 3) and a router naming
-# only the three record types that exist there (InformationRecord would be an
-# unresolvable type on PS 4: a runtime error per piped object, payload
-# dropped). Expectations are hand-built bytes, never read from the lib
-# constants, so each test states the wire shape on its own terms.
+# only the three record types that exist there (InformationRecord is an
+# unresolvable type on PS 4; -is on it is documented to error per piped
+# object and drop it). Expectations are hand-built bytes, never read from the
+# lib constants, so each test states the wire shape on its own terms.
 class UnitPsVersionMergeTest < Minitest::Test
   FULL_MERGE = ' 3>&1 4>&1 5>&1 6>&1'
   LEGACY_MERGE = ' 3>&1 4>&1 5>&1'
@@ -43,7 +43,7 @@ class UnitPsVersionMergeTest < Minitest::Test
       @runs << script
       return Fog::Hyperv::Utils::Winrm::LocalExecOutput.new('True', '', 0) if script == '$?'
 
-      Fog::Hyperv::Utils::Winrm::LocalExecOutput.new('{"Major":5,"Minor":1}', '', 0)
+      Fog::Hyperv::Utils::Winrm::LocalExecOutput.new('{"Name":"HV-NODE1"}', '', 0)
     end
   end
 
@@ -87,7 +87,7 @@ class UnitPsVersionMergeTest < Minitest::Test
     end
 
     def discover_host_names(_fqdn)
-      []
+      [nil, nil]
     end
   end
 
