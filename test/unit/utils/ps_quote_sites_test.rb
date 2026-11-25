@@ -109,6 +109,10 @@ class UnitPsQuoteSitesTest < Minitest::Test
   end
 
   def test_the_pull_script_doubles_typographic_quotes_in_the_path
+    # The request gate (ContainedPath) also refuses this path — ALLOWED_CHARS
+    # excludes the typographic quotes — so this pins the builder's own
+    # contract for callers that hand it a string directly, not a hole in
+    # fetch_url_to_path (the url test above is the live F7 surface).
     path = "C:\\VMs\\web#{CURLY}1\\x.iso"
     script = Fog::Hyperv::Utils::FilePull.build_script(
       url: 'http://x/a.iso', path: path, sha256: 'AB12', size: 7

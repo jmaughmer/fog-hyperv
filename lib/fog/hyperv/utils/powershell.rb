@@ -39,7 +39,12 @@ module Fog::Hyperv::Utils::Powershell
         # split — every argument in this branch made it a NoMethodError, and
         # no caller had ever reached this line (FOG-23's render test is the
         # first). The branch's own $-interpolation semantics inside its
-        # double-quoted values are upstream behaviour this PR leaves alone.
+        # double-quoted values are upstream behaviour this PR leaves alone,
+        # and the branch reaches further broken ground below its first call:
+        # the Array and non-scalar arms call shell_quoted, which is defined
+        # nowhere in this repo at base or here, so an Array or Integer value
+        # still dies with NameError (round-24 F1; a real repair is its own
+        # PR, not this one's feature).
         "'#{k}'=#{shell_quote(v, always: true)}"
       end
 
