@@ -505,23 +505,32 @@ module Fog::Hyperv::Utils::Winrm
   # wire, and a connection that is brand new was paying for two of them before
   # it could answer anything.
   #
+  # The resolution rides inside its own try (FOG-29): a machine whose own name
+  # does not resolve answers that arm empty and STILL answers the short name.
+  # One throw used to take both names down with it, and the alias the short
+  # name carries is the one an IP- or CNAME-addressed endpoint needs most.
+  #
   # @param fqdn [String] the host the connection was made to, to ask on
   # @return [Array(String,nil)] the short name and the resolved one, either nil
-  #   when the machine reported nothing for it, or answered nothing at all
+  #   when the machine reported nothing for it, the FQDN also when the machine's
+  #   own name does not resolve, or both when the machine answered nothing at all
   def discover_host_names(fqdn)
     names = run_cmd(
-      '"$($env:computerName); $([System.Net.Dns]::GetHostByName($env:computerName).Hostname)"',
+      '$fogShort = $env:computerName; ' \
+      'try { $fogFq = [System.Net.Dns]::GetHostByName($env:computerName).Hostname } ' \
+      "catch { $fogFq = '' }; " \
+      '$fogShort + "; " + $fogFq',
       _target_computer: fqdn,
       _skip_json: true,
       _ps_version: 1
     ).stdout.to_s.lines.first.to_s.split(';', 2).map { |name| name.strip.downcase }.map { |name| name unless name.empty? }
     names
   rescue StandardError => e
-    # GetHostByName throws on a machine whose own name does not resolve, and the
-    # shell's Stop preference turns that into a raised PSError. The extra names
-    # are worth one call, not a refused connection: the connection is already
-    # registered under the endpoint's own name, so a host that will not answer
-    # for its names loses the aliases and nothing else
+    # FOG-29 contained the resolution inside the script, so a raise here is the
+    # CALL dying (transport, shell), not a name that would not resolve. The
+    # extra names are worth one call, not a refused connection: the connection
+    # is already registered under the endpoint's own name, so a host whose
+    # answer cannot be read loses the aliases and nothing else
     Fog::Logger.debug "host name discovery on #{fqdn} failed: #{e.message}"
     [nil, nil]
   end

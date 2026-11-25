@@ -1,5 +1,19 @@
 ## Unreleased
 
+- Host-name discovery now keeps the short name when the FQDN arm fails. The
+  one call that asks a machine both names it answers to printed the short name
+  and [System.Net.Dns]::GetHostByName's answer as one expression, so on a
+  machine whose own name does not resolve — exactly the machine an IP- or
+  CNAME-addressed endpoint has most reason to call by its NetBIOS name — the
+  resolution threw and took the short name down with it, and later calls by
+  that name met the exact-host gate with no alias behind them. The resolution
+  now rides inside its own try with an empty-string catch, so a host that
+  cannot resolve its own name still prints its short name and answers no
+  FQDN. Still one call; still one round trip. What is NOT promised: a
+  discovery CALL that dies outright (transport, shell) keeps anything — that
+  answer remains no names and a connection standing on the endpoint's own
+  name, exactly as before.
+
 - The Server model's cluster memos now live the lifetime their docs promise:
   #is_clustered checks its memo BEFORE it asks whether cluster questions can
   be asked at all — that guard is a live root/mscluster round trip (Real#
