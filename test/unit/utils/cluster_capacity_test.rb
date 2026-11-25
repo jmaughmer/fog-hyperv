@@ -10,7 +10,9 @@ require 'fog/json'
 # refusal branch is tested, not just the happy path. The shapes refused here are the
 # ones measured as real on Server 2025 (evidence sections 29, 30, 33.1): the nested
 # object that serialises as a type name, the offline volume with no path, and the
-# contradiction of a clustered node with no volumes at all.
+# unattributable answer. A witnessed cluster answering no volumes at all is NOT
+# refused — zero CSVs is a valid configuration, and the empty list is the answer
+# (review F9).
 class UnitClusterCapacityTest < Minitest::Test
   CLUSTER_ID = 'becc0c8a-6444-4df5-bcd8-585ebab46518'
   OTHER_CLUSTER_ID = 'f5fc878c-37c4-482a-add5-e64d370224dc'
@@ -193,12 +195,20 @@ class UnitClusterCapacityTest < Minitest::Test
     assert_instance_of Array, subject.parse_capacity_read(envelope, cluster_id: '   ')
   end
 
-  # -- the contradiction rule (evidence section 29) ---------------------------------
+  # -- the witnessed zero (review F9) -------------------------------------------------
 
-  def test_a_clustered_node_answering_no_volumes_is_a_refused_contradiction
-    refusal { subject.parse_capacity_read(envelope(volumes: [])) }
-    # A null rather than an empty array is the same silence in a different coat.
-    refusal { subject.parse_capacity_read(Fog::JSON.encode(clusterName: 'HV-CL01', clusterId: CLUSTER_ID, volumes: nil)) }
+  # The witness legs matched — the cluster named itself — so an empty volume list
+  # is what the cluster HAS, not a contradiction: VMs on SMB 3.0 / Scale-Out File
+  # Server shares, and freshly formed clusters, are real configurations whose CSV
+  # count is zero. The empty list goes home to the caller, which refuses placement
+  # in the user's words; only the unattributable silence stays a refusal (tested
+  # above: no name, no id, empty stdout).
+  def test_a_witnessed_cluster_answering_no_volumes_is_the_empty_answer
+    assert_equal [], subject.parse_capacity_read(envelope(volumes: []))
+    # A null rather than an empty array is the same answer in a different coat.
+    assert_equal [], subject.parse_capacity_read(Fog::JSON.encode(clusterName: 'HV-CL01', clusterId: CLUSTER_ID, volumes: nil))
+    # The expected-cluster ask is answered the same way once its witness matched.
+    assert_equal [], subject.parse_capacity_read(envelope(volumes: []), cluster_id: CLUSTER_ID)
   end
 
   # The single-volume answer must still read as a list: ConvertTo-Json on this

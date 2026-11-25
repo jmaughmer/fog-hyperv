@@ -17,10 +17,14 @@ class Fog::Hyperv::Compute
     # directory exists on the dialled node), size, free_space, percent_free,
     # fault_state, maintenance_mode, redirected_access — or raises. Nothing here
     # guesses: the read witnesses the answering cluster before trusting any volume
-    # list, refuses a list that contradicts that witness, and refuses rows whose
-    # shape the measured cmdlet cannot produce. A filtered read that matches
-    # nothing answers with an empty array — the cluster answered, the filter just
-    # matched no volume — which is the collection's NotFound.
+    # list, refuses an answer that cannot be attributed to that witness, and refuses
+    # rows whose shape the measured cmdlet cannot produce. A filtered read that
+    # matches nothing answers with an empty array — the cluster answered, the filter
+    # just matched no volume — which is the collection's NotFound. A cluster with no
+    # Cluster Shared Volumes at all (VMs on SMB 3.0 / Scale-Out File Server shares,
+    # a newly formed cluster) answers the same empty array: the witness matched,
+    # zero volumes is what the cluster has, and placement refuses that in the
+    # caller's own words.
     #
     # Why it is a script and not the cmdlet pipeline (lab-measured, Server 2025 /
     # FailoverCluster 26100, evidence sections 2, 29, 30, 33.1 and 34.5, restated in

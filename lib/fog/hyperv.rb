@@ -96,14 +96,15 @@ module Fog
       # A cluster shared volume read came back in a shape this code refuses to
       # guess about: a successful call with no output, an answer that cannot be
       # attributed to a cluster (no witness name or id, or a different cluster than
-      # the one asked for), a clustered node with no shared volumes at all (a
-      # contradiction on the measured build, where the CSV list has no second
-      # source), or a row whose state, name, SharedVolumeInfo count, or
+      # the one asked for), or a row whose state, name, SharedVolumeInfo count, or
       # online-without-mount-path combination contradicts what the cmdlet is
       # measured to be able to answer. All of these are refused rather than
       # returned, because the answer being avoided is a placement decision onto
       # storage that is not there — the disk create would fail late, on the
-      # storage layer, after the VM and its role already exist.
+      # storage layer, after the VM and its role already exist. A witnessed cluster
+      # answering no volumes at all is NOT one of them: zero CSVs is a valid
+      # configuration, and that empty list is an answer callers refuse themselves
+      # (review F9).
       class ClusterCapacityUninterpretable < ServiceError; end
 
       # A path was handed to a destructive request (Remove-Item, or the folder
@@ -232,8 +233,9 @@ module Fog
     # integer enum (2 = Online, 3 = Offline), Partition capacity, and the health
     # flags, and every answer that cannot be attributed to the asked-for cluster
     # or that contradicts the measured cmdlet shapes raises
-    # ClusterCapacityUninterpretable instead of becoming an empty or
-    # path-less list. Before this constant, the read reached callers with a nil
+    # ClusterCapacityUninterpretable instead of becoming a path-less or
+    # unattributed list (a witnessed zero-volume cluster answers the empty list).
+    # Before this constant, the read reached callers with a nil
     # path, size and free space for every volume on every cluster.
     # `:cluster_role_failback` means the clustered-role contract carries the
     # measured high-availability failback surface: the role read reports

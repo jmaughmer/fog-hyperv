@@ -52,11 +52,12 @@ module Fog
         # answering: a node whose cluster service cannot serve dies on that leg,
         # before anything could answer an empty volume list, so "this cluster has
         # volumes X and Y" can never be the word of a node that could not answer.
-        # On a clustered node that DOES answer, an empty volume list is a
-        # contradiction rather than an answer (evidence section 29: CSVs are not
-        # cluster resources on this build and cannot be enumerated a second way, so
-        # the single cmdlet returning nothing while the cluster answers is refused by
-        # the parser, not returned as an empty list).
+        # On a clustered node that DOES answer, an empty volume list IS the answer:
+        # zero CSVs is a valid configuration (VMs on SMB 3.0 / Scale-Out File
+        # Server shares, a newly formed cluster), and attribution was always the
+        # open question — evidence section 29's fact that Get-ClusterSharedVolume
+        # has no second source is exactly why the witness leg exists, so emptiness
+        # from a witnessed cluster is returned, not refused (review F9).
         #
         # SharedVolumeInfo is a collection (evidence section 2). Exactly one entry
         # per volume was measured; a volume answering several entries with this
@@ -110,9 +111,9 @@ module Fog
         #   leg the answer cannot be attributed to a cluster at all;
         # - a caller-expected cluster id that the answering cluster does not carry
         #   is refused rather than answered with another cluster's volumes;
-        # - an empty volume list while the cluster answered IS a contradiction on
-        #   this build (evidence section 29) and is refused, never returned as the
-        #   empty list that downstream placement reads as "nowhere to put disks";
+        # - an empty volume list from a cluster that answered IS the empty list:
+        #   zero CSVs is a valid cluster configuration, and "nowhere to put disks"
+        #   is the caller's decision to speak, not the parser's to pre-empt;
         # - a row with no name is refused (an unusable identity), a non-integer
         #   state is refused (the projection casts to int, so a string means the
         #   answer is not the cmdlet this script speaks to), and a row claiming
@@ -187,13 +188,13 @@ module Fog
 
           volumes = [payload[:volumes]].flatten.compact
           if volumes.empty?
-            # Evidence section 29: on this build a CSV is not a cluster resource and
-            # Get-ClusterSharedVolume is the only way to ask, so "no volumes at all"
-            # from a node that just named its cluster is the cmdlet contradicting the
-            # cluster, not an empty answer to act on.
-            raise Fog::Hyperv::Errors::ClusterCapacityUninterpretable,
-                  'the cluster answered the shared volume read with no volumes at all; a clustered ' \
-                  'node without a single shared volume is a contradiction on this build, not an answer'
+            # The witness legs above matched, so this empty list belongs to the
+            # named cluster. Zero CSVs is a valid configuration (VMs on SMB 3.0 /
+            # Scale-Out File Server shares, a newly formed cluster), so the read
+            # answers the empty list and callers decide what zero means: the
+            # refusal belongs to placement, in the user's words, not to the
+            # parser inventing a contradiction (review F9).
+            return []
           end
 
           volumes.map { |row| validate_capacity_row!(row) }
