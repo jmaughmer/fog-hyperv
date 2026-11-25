@@ -7,12 +7,14 @@ require 'fog/json'
 # The rules behind the Cluster Shared Volume read. These are the guards that stand
 # between "the node did not answer my storage question" and "this cluster has these
 # volumes" — the second of which licenses placing a machine's disks — so every
-# refusal branch is tested, not just the happy path. The shapes refused here are the
-# ones measured as real on Server 2025 (evidence sections 29, 30, 33.1): the nested
-# object that serialises as a type name, the offline volume with no path, and the
-# unattributable answer. A witnessed cluster answering no volumes at all is NOT
-# refused — zero CSVs is a valid configuration, and the empty list is the answer
-# (review F9).
+# refusal branch is tested, not just the happy path. The shapes refused here include
+# the ones measured as real on Server 2025: the nested object that serialises as a
+# type name (§33.1) and the offline volume with no path (§29, §34.5). The silence
+# and the unattributable envelope are off-contract refusals, not measured shapes:
+# the silent read was measured (§27.3, §52) and a non-cluster node was measured as
+# a raise (§18), but the read script always prints its answer, so anything less is
+# refused. A witnessed cluster answering no volumes at all is NOT refused — zero
+# CSVs is a valid configuration, and the empty list is the answer (review F9).
 class UnitClusterCapacityTest < Minitest::Test
   CLUSTER_ID = 'becc0c8a-6444-4df5-bcd8-585ebab46518'
   OTHER_CLUSTER_ID = 'f5fc878c-37c4-482a-add5-e64d370224dc'
@@ -207,6 +209,8 @@ class UnitClusterCapacityTest < Minitest::Test
     assert_equal [], subject.parse_capacity_read(envelope(volumes: []))
     # A null rather than an empty array is the same answer in a different coat.
     assert_equal [], subject.parse_capacity_read(Fog::JSON.encode(clusterName: 'HV-CL01', clusterId: CLUSTER_ID, volumes: nil))
+    # A list whose every entry is null holds no volume: the same silence again.
+    assert_equal [], subject.parse_capacity_read(envelope(volumes: [nil]))
     # The expected-cluster ask is answered the same way once its witness matched.
     assert_equal [], subject.parse_capacity_read(envelope(volumes: []), cluster_id: CLUSTER_ID)
   end

@@ -233,10 +233,11 @@ module Fog
     # integer enum (2 = Online, 3 = Offline), Partition capacity, and the health
     # flags, and every answer that cannot be attributed to the asked-for cluster
     # or that contradicts the measured cmdlet shapes raises
-    # ClusterCapacityUninterpretable instead of becoming a path-less or
-    # unattributed list (a witnessed zero-volume cluster answers the empty list).
-    # Before this constant, the read reached callers with a nil
-    # path, size and free space for every volume on every cluster.
+    # ClusterCapacityUninterpretable instead of becoming a path-less online row
+    # or an unattributed list (a witnessed zero-volume cluster answers the empty
+    # list, and a measured Offline row legitimately has no path). Before this
+    # constant, the read reached callers with a nil path, size and free space for
+    # every volume on every cluster.
     # `:cluster_role_failback` means the clustered-role contract carries the
     # measured high-availability failback surface: the role read reports
     # auto_failback_type and the failback window (with the model reading the
