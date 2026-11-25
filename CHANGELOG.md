@@ -9,7 +9,9 @@
   that name met the exact-host gate with no alias behind them. The resolution
   now rides inside its own try with an empty-string catch, so a host that
   cannot resolve its own name still prints its short name and answers no
-  FQDN. Still one call; still one round trip. What is NOT promised: a
+  FQDN. Still one call: no extra call, no extra command — the review's split
+  probe would have cost a second command-and-receive per connection. What is
+  NOT promised: a
   discovery CALL that dies outright (transport, shell) keeps anything — that
   answer remains no names and a connection standing on the endpoint's own
   name, exactly as before.

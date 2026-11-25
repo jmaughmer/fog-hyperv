@@ -513,7 +513,8 @@ module Fog::Hyperv::Utils::Winrm
   # @param fqdn [String] the host the connection was made to, to ask on
   # @return [Array(String,nil)] the short name and the resolved one, either nil
   #   when the machine reported nothing for it, the FQDN also when the machine's
-  #   own name does not resolve, or both when the machine answered nothing at all
+  #   own name does not resolve, or both when nothing came back — a blank answer
+  #   or a call that died outright
   def discover_host_names(fqdn)
     names = run_cmd(
       '$fogShort = $env:computerName; ' \
