@@ -69,7 +69,7 @@ class UnitRemoveItemForceTest < Minitest::Test
 
     _cmd, opts = @client.cmd_calls.first
 
-    refute_equal false, opts[:force]
+    refute opts.fetch(:force), 'force must reach run_cmd as the caller sent it'
   end
 
   # What PowerShell actually binds: the rendered optmap JSON carries
