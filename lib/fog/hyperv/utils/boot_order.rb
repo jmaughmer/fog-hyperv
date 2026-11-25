@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'fog/json'
+require 'fog/hyperv/utils/ps_quote'
 
 # rubocop:disable Metrics/ModuleLength
 
@@ -174,7 +175,7 @@ module Fog::Hyperv
         # split; the seam is where the write stops being the caller's ask and
         # starts being the host's answer.
         def build_set_script(requests)
-          json = Fog::JSON.encode(requests).gsub("'", "''")
+          json = Fog::Hyperv::Utils::PsQuote.escape(Fog::JSON.encode(requests))
 
           "#{write_half(json)}#{verify_half}"
         end

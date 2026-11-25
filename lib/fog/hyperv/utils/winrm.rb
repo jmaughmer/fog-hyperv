@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'fog/json'
+require 'fog/hyperv/utils/ps_quote'
 
 # rubocop:disable Metrics/ModuleLength
 
@@ -200,7 +201,7 @@ module Fog::Hyperv::Utils::Winrm
     _json_depth = options.delete(:_json_depth) { 1 }
 
     pipeline = []
-    pipeline << "Where-Object {$_.id -eq '#{_by_id}'}" if _by_id
+    pipeline << "Where-Object {$_.id -eq '#{Fog::Hyperv::Utils::PsQuote.escape(_by_id.to_s)}'}" if _by_id
     pipeline << "Select #{Fog::Hyperv.camelize([_return_fields].flatten).join ','}" if _return_fields
     pipeline << "ConvertTo-Json -Compress#{" -Depth #{_json_depth}" if _json_depth}" if _to_json
 

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'fog/json'
+require 'fog/hyperv/utils/ps_quote'
 
 module Fog::Hyperv::Utils::Powershell
   # Build a Powershell option map from a set of keyword arguments
@@ -11,12 +12,20 @@ module Fog::Hyperv::Utils::Powershell
   def self.build_optmap(_optmap_name: 'FogArgs', _ps_version: 5, _from_json: true, **_options)
     ps_opts = Fog::Hyperv.camelize(_options)
     if _from_json
+      # The payload is JSON, which escapes everything EXCEPT the quote
+      # characters this embedding rides — a name carrying an apostrophe (or a
+      # typographic one, which the tokenizer treats identically) would else
+      # end the literal and run the rest of the argument as code. Backslashes
+      # are left exactly as the JSON encoder wrote them: a single-quoted
+      # literal does not process them, and ConvertFrom-Json expects the
+      # encoder's own doubling.
+      json = Fog::Hyperv::Utils::PsQuote.escape(Fog::JSON.encode ps_opts)
       if _ps_version >= 6
-        ["$#{_optmap_name} = ConvertFrom-Json -AsHashtable '#{Fog::JSON.encode ps_opts}'"]
+        ["$#{_optmap_name} = ConvertFrom-Json -AsHashtable '#{json}'"]
       else
         [
           [
-            "$FogJsonObject = '#{Fog::JSON.encode ps_opts}'",
+            "$FogJsonObject = '#{json}'",
             '$FogJsonParameters = ConvertFrom-Json -InputObject $FogJsonObject',
             "$#{_optmap_name} = @{}",
             "$FogJsonParameters.psobject.properties | Foreach { $#{_optmap_name}[$_.Name] = $_.Value }"

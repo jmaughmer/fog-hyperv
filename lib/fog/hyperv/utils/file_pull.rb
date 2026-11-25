@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'fog/hyperv/utils/ps_quote'
+
 module Fog::Hyperv
   module Utils
     # The pull script behind fetch_url_to_path (:file_pull).
@@ -30,8 +32,8 @@ module Fog::Hyperv
         # this script's own trash, never the caller's final file) and rethrow,
         # so the transport surfaces WHICH check said no.
         def build_script(url:, path:, sha256:, size:)
-          quoted_url = url.gsub("'", "''")
-          quoted_path = path.gsub("'", "''")
+          quoted_url = Fog::Hyperv::Utils::PsQuote.escape(url)
+          quoted_path = Fog::Hyperv::Utils::PsQuote.escape(path)
 
           <<~SCRIPT
             $ProgressPreference = 'SilentlyContinue'

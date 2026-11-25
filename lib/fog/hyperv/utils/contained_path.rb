@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'fog/hyperv/utils/ps_quote'
+
 module Fog
   module Hyperv
     module Utils
@@ -143,7 +145,7 @@ module Fog
         # is validated by the caller before it gets here; single quotes inside a
         # name double up, the only escape a single-quoted literal needs.
         def build_file_removal_script(path)
-          quoted = "'#{validate_contained_path!(path, 'the file cleanup').gsub("'", "''")}'"
+          quoted = Fog::Hyperv::Utils::PsQuote.quote(validate_contained_path!(path, 'the file cleanup'))
 
           # One assignment so the name is quoted once and the three cmdlets below
           # cannot disagree about which file they were talking about.
