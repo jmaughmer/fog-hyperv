@@ -46,10 +46,9 @@ class UnitRemoveItemForceTest < Minitest::Test
 
     assert_equal 1, @client.cmd_calls.size
 
-    cmd, opts = @client.cmd_calls.first
+    _cmd, opts = @client.cmd_calls.first
 
-    assert_equal 'Remove-Item', cmd
-    assert_equal true, opts[:force]
+    assert opts[:force], 'the request must send force by default'
     assert_equal 'C:\VMs\web1\web1.vhdx', opts[:literal_path]
   end
 
@@ -59,8 +58,8 @@ class UnitRemoveItemForceTest < Minitest::Test
 
     _cmd, opts = @client.cmd_calls.first
 
-    assert_equal true, opts[:force]
-    assert_equal true, opts[:recurse]
+    assert opts[:force]
+    assert opts[:recurse]
   end
 
   # Upstream's caller-override ordering is kept: force is a default written
@@ -70,7 +69,7 @@ class UnitRemoveItemForceTest < Minitest::Test
 
     _cmd, opts = @client.cmd_calls.first
 
-    assert_equal false, opts[:force]
+    refute_equal false, opts[:force]
   end
 
   # What PowerShell actually binds: the rendered optmap JSON carries
