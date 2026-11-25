@@ -193,6 +193,23 @@ module Fog::Hyperv::Utils::Winrm
     data
   end
 
+  # The names THIS endpoint reported for itself at connect, downcased —
+  # the machine's short name and its own fully qualified name, whichever
+  # arrived (see discover_host_names: the connection asked even before
+  # FOG-27; FOG-27 only keeps the answer). This is the endpoint's SELF
+  # report, for callers that must match a node name against "the machine
+  # behind this client": a URL host is '10' for an IP endpoint of
+  # 10.0.0.5, and a CNAME names no node at all. [] until the endpoint
+  # connection stands, and [] forever for a host that will not answer for
+  # itself — the caller degrades to the URL, it never fails and is never
+  # left to guess. Frozen and shared: the answer belongs to the
+  # connection, not to any one caller.
+  #
+  # @return [Array(String)] the names the endpoint answered for itself
+  def local_host_names
+    @local_host_names
+  end
+
   private
 
   def version
@@ -535,6 +552,16 @@ module Fog::Hyperv::Utils::Winrm
       @connections['.'] = connection
       @connections['localhost'] = connection
       @local_hostname = hostname
+      # FOG-27: keep the discovery ANSWER, not only its side effects. This
+      # is the endpoint's own report of which machine it is — the short
+      # name and the name it resolves to, downcased, exactly as
+      # discover_host_names answered them, nothing asked that the
+      # connection did not already learn. Callers that must decide whether
+      # a node name IS this machine need these: a URL host of 10.0.0.5
+      # names the machine to the network and to nobody else. Reassigned
+      # whole and frozen, so a caller can read the list without copying it
+      # and no later connect mutates what an earlier reader holds.
+      @local_host_names = [hostname, resolved].compact.uniq.freeze
     end
 
     connection

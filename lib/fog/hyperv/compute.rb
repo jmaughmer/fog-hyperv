@@ -176,6 +176,11 @@ module Fog::Hyperv
         @bake_optmap = true
 
         @connections = {}
+        # FOG-27: the endpoint's self-reported names, kept from connect
+        # (see local_host_names). Empty until the endpoint connection
+        # stands — or forever, for a host that answers nothing — so the
+        # reader is always a list a caller can match against.
+        @local_host_names = [].freeze
         # FOG-9: a host-shaped option is checked before it composes or carries
         # an endpoint, by the same rule the connection path uses later. A value
         # that survives to this point can name no shell metacharacter, no
