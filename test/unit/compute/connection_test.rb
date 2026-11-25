@@ -293,6 +293,9 @@ class UnitConnectionTest < Minitest::Test
   # two separate shell runs - a command and a receive apiece, each one round
   # trip its own on the wire - before it could answer anything else. Both names
   # come off the same $env:computerName, so they are asked together now.
+  # FOG-29 keeps the single call and separates the ARMS: the resolution rides
+  # inside its own try, so a machine whose own name does not resolve answers
+  # the FQDN empty and still prints the short name it reads first.
 
   def discovery_client(stdout)
     client = OfflineClient.new(
@@ -339,15 +342,60 @@ class UnitConnectionTest < Minitest::Test
     assert_nil fqdn
   end
 
-  # A machine whose own name does not resolve answers the question by throwing,
-  # and the shell's Stop preference turns that into a raised error. The names
-  # are an optimisation the connection does not need to stand, and the call was
-  # made after the endpoint's own name was registered, so a host that will not
-  # answer for itself loses the aliases and not the connection
-  def test_a_host_that_raises_over_its_names_yields_nothing
+  # FOG-29 (review observation 2): the resolution used to ride BARE in the
+  # script, so a machine whose own name does not resolve threw and the throw
+  # took BOTH names down - losing the short-name alias an IP/CNAME endpoint
+  # needs most. The resolution now rides inside its own try.
+  # rubocop:disable Minitest/MultipleAssertions
+  def test_the_resolution_arm_rides_in_a_try
+    client, calls = discovery_client("HV-NODE1; hv-node1.lab.example\r\n")
+    client.send(:discover_host_names, 'hyperv.example')
+
+    script = calls.first
+
+    assert_match(/try\s*\{/, script)
+    assert_match(/GetHostByName/, script)
+    assert_match(/\}\s*catch\s*\{/, script)
+    assert_match(/catch\s*\{\s*\$fogFq\s*=\s*['"]{2}\s*\}/, script,
+                 'the catch must land an EMPTY FQDN arm, not rethrow')
+
+    # the single GetHostByName is the resolution, and it sits between try and catch
+    inside = script[/try\s*\{(.*)\}\s*catch/m, 1].to_s
+
+    assert_includes inside, 'GetHostByName'
+    assert_equal 1, script.scan('GetHostByName').size, 'exactly the resolution is guarded'
+  end
+
+  # The short name is emitted AFTER the catch, so the answer no longer stands
+  # or falls on GetHostByName: the machine's real degraded output ("short; ")
+  # keeps the short name and answers no FQDN.
+  def test_the_short_name_is_answered_outside_the_resolution_arm
+    client, calls = discovery_client("HV-NODE1; \r\n")
+    hostname, fqdn = client.send(:discover_host_names, 'hyperv.example')
+
+    script = calls.first
+    assignment = script.index('$fogShort = $env:computerName')
+    emit = script.rindex('$fogShort')
+    catch_at = script.index('catch')
+
+    refute_nil assignment, 'the short name is read off $env:computerName'
+    refute_nil emit
+    assert_operator emit, :>, catch_at, 'the short name is emitted after the catch, not inside the guarded arm'
+    assert_equal 'hv-node1', hostname
+    assert_nil fqdn
+  end
+  # rubocop:enable Minitest/MultipleAssertions
+
+  # A machine whose own name does not resolve answers it inside the script now
+  # (the tests above). What still lands here is the CALL itself dying - shell,
+  # transport - before any arm could answer. The names are an optimisation the
+  # connection does not need to stand, and the call was made after the
+  # endpoint's own name was registered, so a host whose answer cannot be read
+  # loses the aliases and not the connection
+  def test_a_dead_discovery_call_yields_nothing
     client, = discovery_client('')
     client.define_singleton_method(:run_cmd) do |*_args, **_opts|
-      raise 'Get-HostByName : No such host is known.'
+      raise 'WSMAN: the shell did not answer'
     end
 
     hostname, fqdn = client.send(:discover_host_names, 'hyperv-01')
@@ -382,7 +430,7 @@ class UnitConnectionTest < Minitest::Test
     end
 
     def run_cmd(*_args, **_opts)
-      raise 'Get-HostByName : No such host is known.' if self.class.discovery_raises?
+      raise 'WSMAN: the shell did not answer' if self.class.discovery_raises?
 
       Fog::Hyperv::Utils::Winrm::LocalExecOutput.new(self.class.discovery_stdout.to_s, '', 0)
     end
