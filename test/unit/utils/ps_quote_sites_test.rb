@@ -194,7 +194,7 @@ class UnitPsQuoteSitesTest < Minitest::Test
     # line and the PR ships the one-word qualification fix with it.
     lines = Fog::Hyperv::Utils::Powershell.build_call('Get-VM', { name: 'web1', _from_json: false }, _ps_version: 5)
 
-    assert_match(/=@\{'Name'="web1"\}/, lines.join(' '))
+    assert_match(/= @\{'Name'="web1"\}/, lines.join(' '))
   end
 
   # --- the _by_id pipeline filter --------------------------------------------
