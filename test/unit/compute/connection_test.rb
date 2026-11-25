@@ -356,6 +356,70 @@ class UnitConnectionTest < Minitest::Test
     assert_nil fqdn
   end
 
+  # FOG-27 (the caller side of review F11): a caller asking "is this node
+  # name the machine behind this client?" is only as good as the names it
+  # has, and matched as a node name, the URL host of 10.0.0.5 reduces to
+  # its first label, '10'. The endpoint ANSWERS its own names at connect
+  # (the tests above) — the client must now answer what it learned, as
+  # one frozen list, so the identity rule can use the names the machine
+  # reported for itself. A client that never learned a name answers []
+  # and the caller degrades to the URL: never an error, never a guess.
+
+  # A Real client over the REAL connect (this is the connect under test):
+  # every wire answer, discovery included, is canned on the class so the
+  # connect that initialize runs can complete without a wire. Discovery
+  # is connect's only run_cmd; the stub answers any run_cmd, so a future
+  # second one would be absorbed here silently and would need its own
+  # pin.
+  class CannedWireClient < Fog::Hyperv::Compute::Real
+    class << self
+      attr_accessor :discovery_stdout
+      attr_writer :discovery_raises
+
+      def discovery_raises?
+        @discovery_raises ? true : false
+      end
+    end
+
+    def run_cmd(*_args, **_opts)
+      raise 'Get-HostByName : No such host is known.' if self.class.discovery_raises?
+
+      Fog::Hyperv::Utils::Winrm::LocalExecOutput.new(self.class.discovery_stdout.to_s, '', 0)
+    end
+  end
+
+  def canned_client(stdout: '', raises: false)
+    CannedWireClient.discovery_stdout = stdout
+    CannedWireClient.discovery_raises = raises
+    CannedWireClient.new(
+      hyperv_endpoint: 'http://hyperv.example:5985/wsman',
+      hyperv_username: 'test',
+      hyperv_password: 'test'
+    )
+  end
+
+  def test_the_client_answers_the_names_the_endpoint_reported_for_itself
+    client = canned_client(stdout: "HYPERV-01; hyperv-01.example.com\r\n")
+
+    assert_equal ['hyperv-01', 'hyperv-01.example.com'], client.local_host_names
+    assert_predicate client.local_host_names, :frozen?, 'the answer is the connection\'s, not the caller\'s to edit'
+  end
+
+  def test_a_client_that_learned_no_names_answers_the_empty_list
+    client = canned_client(raises: true)
+
+    assert_equal [], client.local_host_names
+    assert_predicate client.local_host_names, :frozen?
+  end
+
+  def test_a_name_the_machine_reported_twice_is_answered_once
+    # A workgroup host answers the same name for both questions; the list
+    # is names, not answer slots.
+    client = canned_client(stdout: "HYPERV-01; HYPERV-01\r\n")
+
+    assert_equal ['hyperv-01'], client.local_host_names
+  end
+
   private
 
   def opts_for(endpoint, options = {})
