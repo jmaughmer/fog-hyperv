@@ -322,8 +322,10 @@ module Fog::Hyperv
       # Does this build read Cluster Shared Volumes through the measured-shape
       # script (Fog::Hyperv::Utils::ClusterCapacity): cluster witness before any
       # volume list, flat rows with volume_path only when it exists on the dialled
-      # node, the measured state enum, and a raise — never an empty or path-less
-      # list — for every answer that contradicts the measured cmdlet shapes. A
+      # node, the measured state enum, and a raise — never a path-less online row
+      # or an unattributed list — for every answer that contradicts the measured
+      # cmdlet shapes (a witnessed zero-volume cluster answers the empty list; a
+      # measured Offline row legitimately has no path). A
       # property of this code like the others: the refusal logic is a pure function
       # (parse_capacity_read) a caller can prove without a machine.
       # @return [Boolean] true for every instance of this build
