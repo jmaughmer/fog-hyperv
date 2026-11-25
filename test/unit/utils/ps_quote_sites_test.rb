@@ -188,7 +188,10 @@ class UnitPsQuoteSitesTest < Minitest::Test
   def test_the_non_json_option_map_renders_unchanged
     # The _from_json: false branch quotes values with shell_quote, a different
     # (double-quoted, backtick-escaped) scheme this change deliberately does
-    # not touch; this pins that the fork did not move it.
+    # not touch; this pins that the fork did not move it. Running it at all is
+    # new: the branch's Fog::Hyperv.shell_quote call never resolved (a
+    # pre-utils-split leftover), so this test is the first execution of the
+    # line and the PR ships the one-word qualification fix with it.
     lines = Fog::Hyperv::Utils::Powershell.build_call('Get-VM', { name: 'web1', _from_json: false }, _ps_version: 5)
 
     assert_match(/=@\{'Name'="web1"\}/, lines.join(' '))

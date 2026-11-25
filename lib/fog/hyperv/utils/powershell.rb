@@ -34,7 +34,13 @@ module Fog::Hyperv::Utils::Powershell
       end
     else
       args = ps_opts.map do |k, v|
-        "'#{k}'=#{Fog::Hyperv.shell_quote(v, always: true)}"
+        # Unqualified on purpose: shell_quote lives in THIS module, and the
+        # Fog::Hyperv-qualified call was a leftover from before the utils
+        # split — every argument in this branch made it a NoMethodError, and
+        # no caller had ever reached this line (FOG-23's render test is the
+        # first). The branch's own $-interpolation semantics inside its
+        # double-quoted values are upstream behaviour this PR leaves alone.
+        "'#{k}'=#{shell_quote(v, always: true)}"
       end
 
       ["$#{_optmap_name} = @{#{args.join ';'}}"]
