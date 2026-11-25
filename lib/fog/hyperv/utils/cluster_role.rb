@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'fog/json'
+require 'fog/hyperv/utils/ps_quote'
 
 module Fog
   module Hyperv
@@ -41,9 +42,13 @@ module Fog
         # not identifying one machine's role. Control characters are refused with
         # them: the value rides inside a script, and a newline or a NUL in a name
         # would put a line break in the middle of the statement being executed.
-        # What survives this ban is hex digits and dashes (a GUID) or ordinary
-        # name characters (a group name); the ban is load-bearing, not cosmetic.
-        FORBIDDEN_CHARS = /["'`$*?\[\]\p{Cntrl}]/
+        # The four Unicode single quotes (U+2018–U+201B) are refused with them
+        # because the tokenizer ends a single-quoted literal at each of them just
+        # as it does at the ASCII apostrophe — a name carrying one of those ends
+        # its own string and runs the rest as code. What survives this ban is hex
+        # digits and dashes (a GUID) or ordinary name characters (a group name);
+        # the ban is load-bearing, not cosmetic.
+        FORBIDDEN_CHARS = /["'`$*?\[\]\p{Cntrl}\u{2018}-\u{201B}]/
 
         # The classifier's table, lower-cased because the comparison lower-cases
         # the prefix: the two FullyQualifiedErrorId prefixes measured to mean
@@ -206,7 +211,7 @@ module Fog
               "@(Get-ClusterGroup -VMId ([guid]'#{vm_id}'))"
             elsif name
               name = validate_role_name!(name, __method__)
-              "@(Get-ClusterGroup -Name '#{name.gsub("'", "''")}')"
+              "@(Get-ClusterGroup -Name '#{Fog::Hyperv::Utils::PsQuote.escape(name)}')"
             else
               '@(Get-ClusterGroup)'
             end

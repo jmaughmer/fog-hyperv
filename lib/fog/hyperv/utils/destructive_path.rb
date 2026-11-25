@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require 'fog/hyperv/utils/ps_quote'
+
 module Fog
   module Hyperv
     module Utils
@@ -66,10 +68,12 @@ module Fog
         # locked, access denied — into a raised PSError, so "could not look" is
         # never read as "nothing there". The path is validated here too, so no
         # caller can reach the quoted literal without passing the checks above;
-        # single quotes inside a name double up, the only escape a PowerShell
-        # single-quoted literal needs.
+        # every character the PowerShell tokenizer ends a single-quoted literal
+        # at — the apostrophe and the four Unicode single quotes — doubles up,
+        # which is the whole of what such a literal needs (backslashes are not
+        # special inside it, and these are Windows paths).
         def build_empty_folder_removal_script(path)
-          literal = validate_destructive_path!(path, 'the folder cleanup').gsub("'", "''")
+          literal = Fog::Hyperv::Utils::PsQuote.escape(validate_destructive_path!(path, 'the folder cleanup'))
 
           "$children = @(Get-ChildItem -LiteralPath '#{literal}' -Force); " \
             "if ($children.Count -eq 0) { Remove-Item -LiteralPath '#{literal}' -Force }"
