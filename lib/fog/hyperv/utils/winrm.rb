@@ -41,6 +41,16 @@ module Fog::Hyperv::Utils::Winrm
   # merges — the payload must stay where it is.
   STREAM_REDIRECTS = ' 3>&1 4>&1 5>&1 6>&1'
 
+  # The merge above is version-gated (review F5): the Information stream and
+  # its 6> redirect operator exist only from PowerShell 5.0, and on anything
+  # older the appended 6>&1 is a PARSE ERROR for the whole rendered script —
+  # which, per the measurement above, exits 0 with $? true and an empty
+  # reply, so every read looks empty and every write looks successful. The
+  # 3>&1 4>&1 5>&1 merges are valid from PowerShell 3, which is the floor
+  # this fork's own fixtures assume (BuildNumber 9600, Server 2012 R2, is the
+  # cluster fixture in test/unit/compute/cluster_test.rb).
+  LEGACY_STREAM_REDIRECTS = ' 3>&1 4>&1 5>&1'
+
   # The router the merged advisories land in front of. Warning/verbose/debug/
   # information records are identified by their exact types (all four measured
   # on the lab node under n>&1) and handed to the host's error-line channel —
@@ -50,12 +60,25 @@ module Fog::Hyperv::Utils::Winrm
   # an advisory for a failure. Everything else passes through untouched, and
   # when no advisory fires the router is invisible. The console-style TYPE:
   # prefix keeps each line as readable as the bare stdout render was.
-  ADVISORY_ROUTER = 'ForEach-Object { if ($_ -is [System.Management.Automation.WarningRecord] ' \
-                    '-or $_ -is [System.Management.Automation.VerboseRecord] ' \
-                    '-or $_ -is [System.Management.Automation.DebugRecord] ' \
-                    '-or $_ -is [System.Management.Automation.InformationRecord]) ' \
-                    "{ $Host.UI.WriteErrorLine($_.GetType().Name.Replace('Record', '').ToUpper() + ': ' + $_.ToString()) } " \
-                    'else { $_ } }'
+  # InformationRecord is a separate arm because it (like 6>&1) does not exist
+  # before PowerShell 5.0 — naming an unresolvable type in -is is documented
+  # to make PS 4 write a runtime error per piped object and drop it, so the
+  # legacy router must not mention it. (No PS 4 host is in the lab; the
+  # design is robust either way — the legacy router simply never names the
+  # type.)
+  ADVISORY_ROUTER_HEAD = 'ForEach-Object { if ($_ -is [System.Management.Automation.WarningRecord] ' \
+                         '-or $_ -is [System.Management.Automation.VerboseRecord] ' \
+                         '-or $_ -is [System.Management.Automation.DebugRecord]'
+
+  ADVISORY_ROUTER_TAIL = ') ' \
+                         "{ $Host.UI.WriteErrorLine($_.GetType().Name.Replace('Record', '').ToUpper() + ': ' + $_.ToString()) } " \
+                         'else { $_ } }'
+
+  ADVISORY_ROUTER = "#{ADVISORY_ROUTER_HEAD} -or $_ -is " \
+                    '[System.Management.Automation.InformationRecord]' \
+                    "#{ADVISORY_ROUTER_TAIL}".freeze
+
+  LEGACY_ADVISORY_ROUTER = "#{ADVISORY_ROUTER_HEAD}#{ADVISORY_ROUTER_TAIL}".freeze
 
   # A verb-noun cmdlet name and nothing else: the only source shape the merge
   # and router may follow. It excludes the expressions the version and
@@ -229,10 +252,21 @@ module Fog::Hyperv::Utils::Winrm
     # pulled out of the stream before Where/Select/ConvertTo-Json ever see
     # them, and stdout carries only the payload. An expression like
     # $PSVersionTable.PSVersion, and a raw script, match nothing here and
-    # render exactly as they used to.
+    # render exactly as they used to. The pair is version-gated (review F5):
+    # below PowerShell 5.0 the 6>&1 would break the parse of the whole call
+    # (exit 0, empty reply — the silent-empty mode this fork measured), so a
+    # pre-5 host gets the PS3-era merge and the router that names only the
+    # three record types that exist there. _ps_version defaults to the PROBED
+    # major, so a real 2012 R2 endpoint answers 4 once and every later call
+    # takes the legacy path on its own.
     if CMDLET_SOURCE.match?(command.sub(/ @Args\z/, ''))
-      command += STREAM_REDIRECTS
-      pipeline.unshift(ADVISORY_ROUTER)
+      if _ps_version.to_i >= 5
+        command += STREAM_REDIRECTS
+        pipeline.unshift(ADVISORY_ROUTER)
+      else
+        command += LEGACY_STREAM_REDIRECTS
+        pipeline.unshift(LEGACY_ADVISORY_ROUTER)
+      end
     end
     pipeline = [command] + pipeline
     Fog::Hyperv::Utils::Powershell.build_call(pipeline.join(' | '), options, _ps_version: _ps_version)
