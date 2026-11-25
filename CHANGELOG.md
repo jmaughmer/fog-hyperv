@@ -11,10 +11,9 @@
   cannot resolve its own name still prints its short name and answers no
   FQDN. Still one call: no extra call, no extra command — the review's split
   probe would have cost a second command-and-receive per connection. What is
-  NOT promised: a
-  discovery CALL that dies outright (transport, shell) keeps anything — that
-  answer remains no names and a connection standing on the endpoint's own
-  name, exactly as before.
+  NOT promised: a discovery CALL that dies outright (transport, shell) keeps
+  anything — that answer remains no names and a connection standing on the
+  endpoint's own name, exactly as before.
 
 - The Server model's cluster memos now live the lifetime their docs promise:
   #is_clustered checks its memo BEFORE it asks whether cluster questions can
