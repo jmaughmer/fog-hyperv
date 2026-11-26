@@ -559,7 +559,19 @@ class Fog::Hyperv::Compute
     # built it — is not one of these answers and survives by design: a
     # failover moves a role, not the cluster.
     # @return [self] if model successfully reloaded
-    # @return [nil] if something went wrong or the model was not found
+    # @return [nil] only when the read SUCCEEDED and answered with nothing
+    #   for this machine — an empty successful stdout is the read's one nil
+    #   (run_cmdlist returns it before any decode). A read that goes wrong
+    #   does not answer nil, it raises: a missing :id raises the
+    #   ArgumentError fog-core's requires throws before a wire is dialled;
+    #   a failed cmdlet raises Fog::Hyperv::Errors::PSError (run_cmdlist
+    #   checks exitcode after every run, and $? whenever stderr carries a
+    #   FullyQualifiedErrorId); and a transport that cannot carry the run
+    #   at all raises its own error — the Errno:: family or winrm-gem
+    #   errors, not PSError. reload carries no rescue, so whichever it is
+    #   propagates untouched. The second @return line used to promise nil
+    #   for "something went wrong"; no went-wrong path ever answered nil
+    #   (FOG-33, the NIT-1 of the FOG-28 review).
     def reload
       requires :id
 
