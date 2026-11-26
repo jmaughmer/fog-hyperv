@@ -1,5 +1,25 @@
 ## Unreleased
 
+- A shared volume row that arrives as a scalar is now refused the same way
+  every other off-shape capacity answer is. The capacity parser flattens the
+  volumes list before validating rows — dropping nils, unwrapping lists —
+  and a String, number, or boolean that survived the flattening died inside
+  the row validator on its own name lookup: a TypeError from String#[] and
+  Integer#[], a NoMethodError from true and false. The read escaped as that
+  raw crash past ClusterCapacityUninterpretable, the one refusal class this
+  read answers every other off-shape answer in and whose refusals its
+  callers propagate, so a placement decision met an interpreter complaint
+  instead of the interpretable refusal. The validator checks what
+  a row IS first now and refuses what is not a hashtable, naming the class
+  and the value that arrived. The degradation class is measured, not
+  hypothetical — Server 2025 answers serialise nested objects as bare
+  type-name strings (§33.1) — and no caller in this repo hands the parser a
+  scalar today; the guard stands between a future degraded answer and a
+  crash escaping its refusal contract. What is NOT touched: the row-content
+  refusals (name, state, SharedVolumeInfo count, online-without-path), the
+  witnessed-zero empty answer, and the measured flat-row happy path, all
+  pinned green on both trees.
+
 - The non-JSON option map now renders the value types it documents.
   build_optmap's _from_json: false arm was first EXECUTED by FOG-23's
   render test, and that execution only ever reached the arm's first line:
