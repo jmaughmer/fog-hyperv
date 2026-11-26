@@ -39,12 +39,15 @@ module Fog::Hyperv::Utils::Powershell
         # split — every argument in this branch made it a NoMethodError, and
         # no caller had ever reached this line (FOG-23's render test is the
         # first). The branch's own $-interpolation semantics inside its
-        # double-quoted values are upstream behaviour this PR leaves alone,
-        # and the branch reaches further broken ground below its first call:
-        # the Array and non-scalar arms call shell_quoted, which is defined
-        # nowhere in this repo at base or here, so an Array or Integer value
-        # still dies with NameError (round-24 F1; a real repair is its own
-        # PR, not this one's feature).
+        # double-quoted values are upstream behaviour this repo leaves
+        # alone. Below this first call sit the Array and non-scalar arms:
+        # they called shell_quoted, a name this repo has not defined since
+        # the rewrite that moved this quoting into Utils deleted it and left
+        # those two calls behind (e6a1410), so an Array or Integer option
+        # died with a NameError before a single
+        # argument shipped (round-24 F1) — FOG-31's recursion to shell_quote
+        # itself is that repair, so every value type this branch documents
+        # now renders instead of dying.
         "'#{k}'=#{shell_quote(v, always: true)}"
       end
 
@@ -96,7 +99,16 @@ module Fog::Hyperv::Utils::Powershell
     when Hash
       raise 'Hashes need to be run through build_optmap'
     when Array
-      "@(#{data.map { |e| shell_quoted(e, always: true) }.join(', ')})"
+      # The first of the two arms that never ran (round-24 F1): this called
+      # shell_quoted, a name this file has called ever since the utils
+      # rewrite (e6a1410) deleted the definition and left the calls behind,
+      # so every Array option died with NameError before a single argument
+      # shipped. The
+      # recursion both dead arms meant is shell_quote itself — the same
+      # owner the String, boolean and null arms already ride — so elements
+      # quote through the one method that owns quoting, and a Hash inside
+      # an Array meets this guard's own refusal instead of a NameError.
+      "@(#{data.map { |e| shell_quote(e, always: true) }.join(', ')})"
     when FalseClass
       '$false'
     when TrueClass
@@ -104,7 +116,11 @@ module Fog::Hyperv::Utils::Powershell
     when nil
       '$null'
     else
-      shell_quoted data.to_s
+      # The second dead arm, repaired by the same one-word recursion. An
+      # Integer reaches the String arm as its own digits, which neither
+      # need quoting nor a space: the option receives a number, not a
+      # numeric string.
+      shell_quote data.to_s
     end
   end
 end
