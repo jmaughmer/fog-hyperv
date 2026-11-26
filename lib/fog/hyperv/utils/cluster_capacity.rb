@@ -204,6 +204,25 @@ module Fog
         # be able to answer. The checks are refusals, never repairs: a row that
         # passes is returned with its own values.
         def validate_capacity_row!(row)
+          unless row.is_a?(Hash)
+            # A scalar where a volume's hashtable belongs dies at row[:name]:
+            # String#[] and Integer#[] raise TypeError, and true and false
+            # answer [] to no one with a NoMethodError. The degradation class
+            # is measured, not imagined — Server 2025 answers serialise nested
+            # objects as bare type-name strings (§33.1, the same measured
+            # shape the FOG-26 test header cites) — and [volumes].flatten
+            # .compact passes any scalar through (dropping nils is compact's
+            # own business). Without this guard
+            # the read escaped with a raw crash instead of this util's one
+            # refusal class, so a placement caller rescuing
+            # ClusterCapacityUninterpretable never saw it (FOG-32; the F4
+            # finding of the FOG-26 review). Refused, never repaired.
+            raise Fog::Hyperv::Errors::ClusterCapacityUninterpretable,
+                  "a shared volume row came back as #{row.class}: #{row.inspect}; the " \
+                  'projection answers every volume as a hashtable, and a scalar in its ' \
+                  'place means the answer was not the projection read at all'
+          end
+
           row = row.dup
 
           if row[:name].to_s.strip.empty?
