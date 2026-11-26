@@ -120,11 +120,26 @@ class UnitWinrmCommandCompositionTest < Minitest::Test
     # Hand-built expected bytes: camelize's capitalize rides the first
     # character (the rest of this lowercase field it leaves alone), the
     # typographic quote doubles, and the semicolon stays data inside the
-    # literal — unescaped, that '; would have run Remove-Item under the
-    # WinRM account.
+    # literal. At base this field was worse than composition: the base log
+    # shows it rendered bare as Select A’; ... — and PsQuote's own doctrine
+    # is that a typographic quote opens a single-quoted literal, so base
+    # shipped an opener nothing closed and the whole command arrived as an
+    # unterminated-string parse error. The next test pins the quoted-free
+    # field whose '; does compose a second statement.
     rendered = build('Get-VM', _return_fields: ["a\u2019; remove-item c:\\vms -recurse"], _ps_version: 5)
 
     assert_includes rendered, "Select 'A\u2019\u2019; remove-item c:\\vms -recurse'"
+  end
+
+  def test_a_field_carrying_a_bare_semicolon_composes_no_second_statement
+    # The composition scenario with its quote characters removed: at base
+    # this field rendered bare (Select Net; exit), and the ';' split the
+    # pipeline — Select Net became the whole first statement and exit, then
+    # ConvertTo-Json over nothing, the second. Inside the literal the ';'
+    # is just data about a machine name that happens to contain one.
+    rendered = build('Get-VM', _return_fields: ['net; exit'], _ps_version: 5)
+
+    assert_includes rendered, "Select 'Net; exit'"
   end
 
   def test_a_call_that_names_no_fields_renders_no_select
