@@ -217,6 +217,12 @@ module Fog::Hyperv::Utils::Winrm
     @version ||= begin
       run_wql('SELECT Version FROM Win32_OperatingSystem', _namespace: 'root/cimv2')[:version]
     rescue StandardError
+      # The hand-written fallback that answers when the WQL query above
+      # cannot. Its last line reached this fork as
+      # `(Get-Item $VMMS).VersionInfo.ProductVersion"` — closing a double
+      # quote it never opened, a parse error for the whole script on the
+      # very fallback whose job is to answer when parsing WQL was not the
+      # option. It ends its statement now.
       run_cmd(
         <<~CMD,
           $VMMS = if ([environment]::Is64BitProcess) {
@@ -224,7 +230,7 @@ module Fog::Hyperv::Utils::Winrm
           } else {
             "$($env:SystemRoot)\\Sysnative\\vmms.exe"
           }
-          (Get-Item $VMMS).VersionInfo.ProductVersion"
+          (Get-Item $VMMS).VersionInfo.ProductVersion
         CMD
         _skip_json: true,
         _ps_version: 1
@@ -243,8 +249,25 @@ module Fog::Hyperv::Utils::Winrm
 
     pipeline = []
     pipeline << "Where-Object {$_.id -eq '#{Fog::Hyperv::Utils::PsQuote.escape(_by_id.to_s)}'}" if _by_id
-    pipeline << "Select #{Fog::Hyperv.camelize([_return_fields].flatten).join ','}" if _return_fields
-    pipeline << "ConvertTo-Json -Compress#{" -Depth #{_json_depth}" if _json_depth}" if _to_json
+    # The projection rides single-quoted literals, one per field, with the
+    # commas OUTSIDE them — argument-mode bare words already parsed as
+    # exactly these strings, so every existing caller asks for what it
+    # always asked for and only the bytes move. What cannot happen now: a
+    # field value carrying one of the five literal-ending quotes closing its
+    # own word mid-pipeline, or a `;` composing a second statement. PsQuote
+    # is the one owner of the doubling inside the literal, same as every
+    # other single-quoted site.
+    if _return_fields
+      fields = Fog::Hyperv.camelize([_return_fields].flatten)
+                          .map { |field| Fog::Hyperv::Utils::PsQuote.quote(field.to_s) }
+                          .join(',')
+      pipeline << "Select #{fields}"
+    end
+    # -Depth is documented as the integer it now renders: to_i means no
+    # arriving value, string or otherwise, can append a statement to the
+    # pipeline this stage exists to contain. Every caller in the repo rides
+    # the default 1, which renders byte for byte as before.
+    pipeline << "ConvertTo-Json -Compress#{" -Depth #{_json_depth.to_i}" if _json_depth}" if _to_json
 
     invalid_opts = options.select { |k, _| k.to_s.start_with? '_' }
     Fog::Logger.debug "build_pscall given unexpected meta-arguments: #{invalid_opts.keys.join ', '}" if invalid_opts.any?
