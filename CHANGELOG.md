@@ -1,5 +1,22 @@
 ## Unreleased
 
+- `Server#reload`'s return documentation now states the answers the method
+  really gives. The second `@return` line promised nil "if something went
+  wrong or the model was not found"; measured against the shipped read, no
+  went-wrong path ever answered nil. An empty successful answer is the
+  read's one nil — run_cmdlist returns it on a zero-exit, empty stdout
+  before any decode. A missing `:id` raises the ArgumentError fog-core's
+  `requires` throws before a wire is dialled (fog-core 2.6.0 has no
+  MissingRequiredArgument class). A failed cmdlet raises
+  `Fog::Hyperv::Errors::PSError` — run_cmdlist checks exitcode after every
+  run, and `$?` whenever stderr carries a FullyQualifiedErrorId — while a
+  transport that cannot carry the run at all raises its own error (the
+  `Errno::` family or winrm-gem errors, not PSError). `reload` carries no
+  rescue, so either failure propagates untouched. A deleted machine rides
+  the PSError path, not nil. This is a
+  documentation correction only — the method body has not moved — and it
+  closes the NIT-1 finding of the FOG-28 review.
+
 - A shared volume row that arrives as a scalar is now refused the same way
   every other off-shape capacity answer is. The capacity parser flattens the
   volumes list before validating rows — dropping nils, unwrapping lists —
