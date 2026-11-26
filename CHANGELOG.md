@@ -1,5 +1,27 @@
 ## Unreleased
 
+- WinRM's composed commands now embed text as data, not as syntax, in the
+  three spots the composer had left bare. The version fallback — the
+  hand-written script reached only when the WQL version query raises, whose
+  entire job is to answer when the first arm cannot — closed a double quote
+  it never opened on its last line, so the fallback arrived as a PowerShell
+  parse error instead of a version; it ends its statement now. The
+  _return_fields projection embedded its camelized field list as bare words
+  (Select Name,Id), so a field value carrying one of the five literal-ending
+  quotes would close its own word mid-pipeline and one carrying a ; would
+  compose a second statement; each field now rides a single-quoted literal
+  through PsQuote, the one owner of that escape, with the commas kept
+  outside the literals so the argument count cannot move. Argument-mode bare
+  words already parsed as exactly those strings, so every existing caller
+  asks for what it always asked for — the parsed arguments are identical,
+  only the rendered bytes move. And -Depth interpolated whatever object
+  arrived; it now renders the integer the flag documents, so no arriving
+  value can append a statement to the pipeline that stage exists to contain
+  (every caller in the repo rides the default 1, which renders byte for byte
+  as before). What is NOT touched: the _from_json: false option map keeps
+  its double-quoted scheme and its dead shell_quoted arms exactly as FOG-23
+  left them — that repair is its own feature.
+
 - Host-name discovery now keeps the short name when the FQDN arm fails. The
   one call that asks a machine both names it answers to printed the short name
   and [System.Net.Dns]::GetHostByName's answer as one expression, so on a
