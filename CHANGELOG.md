@@ -1,5 +1,24 @@
 ## Unreleased
 
+- The non-JSON option map now renders the value types it documents.
+  build_optmap's _from_json: false arm was first EXECUTED by FOG-23's
+  render test, and that execution only ever reached the arm's first line:
+  below it, shell_quote's Array arm and its non-scalar fallback called
+  shell_quoted, a name this repo has not defined since the rewrite that
+  moved this quoting into Utils deleted the definition and left the calls
+  behind (e6a1410), so an Array or Integer
+  option died with NameError before a single argument shipped (round-24
+  F1). Both dead arms now ride the one-word recursion they always meant —
+  shell_quote itself, the same owner the String, boolean and null arms
+  already ride. Integers render bare (an option receives a number, not a
+  numeric string), Arrays render as @( ) of recursively quoted elements,
+  and a Hash inside an Array meets the Hash guard's own refusal instead of
+  a NameError for a call this file has never been able to resolve since
+  that rewrite. What is NOT touched: the
+  branch's double-quoted, $-interpolating value semantics are upstream
+  behaviour and stay exactly as FOG-23 left them, and the JSON arm — the
+  one every in-repo caller rides — never enters this code.
+
 - WinRM's composed commands now embed text as data, not as syntax, in the
   three spots the composer had left bare. The version fallback — the
   hand-written script reached only when the WQL version query raises, whose
