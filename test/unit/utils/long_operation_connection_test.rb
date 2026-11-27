@@ -179,6 +179,30 @@ class UnitLongOperationConnectionTest < Minitest::Test
 
     assert_equal registered_before.keys.sort, @client.instance_variable_get(:@connections).keys.sort,
                  'a variant that answered a host lookup would silently move ordinary traffic onto a widened window'
+    # The key set alone cannot see a variant OVERWRITING an existing key's
+    # value (@connections['.'] = variant keeps the key set identical), so the
+    # pin reads the value door the host lookup itself reads: the endpoint
+    # sentinel entry must still be the very object it was before the variant
+    # was built.
+    assert_same base, @client.send(:connection, '.'),
+                'a variant parked under the endpoint sentinel would answer host lookups on the widened window'
+  end
+
+  # connect() registers three doors, and a lookup on one provably never reads
+  # another's entry — so the sentinel door alone would let a variant hide
+  # under @connections['localhost'] or the configured-host key. Each door is
+  # pinned through the lookup itself, to its own object. (Two tests because
+  # the fork keeps every test method inside the 3-assertion
+  # Minitest/MultipleAssertions bound its base tree honors everywhere.)
+  def test_no_variant_can_hide_under_the_localhost_or_the_configured_host_entry
+    base = @client.send(:connection, '.')
+
+    @client.send(:long_operation_connection, base, 300)
+
+    assert_same base, @client.send(:connection, 'localhost'),
+                'a variant parked under the localhost entry would answer localhost lookups on the widened window'
+    assert_same base, @client.send(:connection, 'recorded.invalid'),
+                'a variant parked under the configured host would answer its lookups on the widened window'
   end
 
   def test_building_a_variant_dials_nothing
