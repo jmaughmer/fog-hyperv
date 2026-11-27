@@ -255,10 +255,12 @@ module Fog
         end
 
         # The one shell the role removal runs. Nothing is deleted on the strength of
-        # an identifier alone: Remove-ClusterVirtualMachineRole does not exist on the
-        # measured build, and the cmdlet that does, Remove-ClusterGroup, answers to a
-        # NAME, so taking the name from a caller would let one GUID's removal delete
-        # a different group. The group is resolved remotely from the same GUID and
+        # an identifier alone: Remove-ClusterVirtualMachineRole does not exist on
+        # either measured build (Server 2022/20348 and Server 2025/26100 — the
+        # 2022 absence measured 2026-11-27), and the cmdlet that does exist,
+        # Remove-ClusterGroup, answers to a NAME, so taking the name from a
+        # caller would let one GUID's removal delete a different group. The
+        # group is resolved remotely from the same GUID and
         # three things are asserted in the same shell before anything is removed:
         # exactly one group matched, it is a virtual machine role, and its machine
         # id — resolved through VM_ID_HELPER, because the direct VmID property is
