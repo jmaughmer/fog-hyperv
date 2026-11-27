@@ -2,6 +2,7 @@
 
 require 'fog/json'
 require 'fog/hyperv/utils/ps_quote'
+require 'fog/hyperv/utils/wql_quote'
 
 # rubocop:disable Metrics/ModuleLength
 
@@ -175,7 +176,15 @@ module Fog::Hyperv::Utils::Winrm
   # @return [Hash] the return hash from the WQL query
   def run_wql(query, _namespace: 'root/virtualization/v2', **where)
     args = Fog::Hyperv.camelize(where).reject { |k, v| v.nil? || v.is_a?(FalseClass) || k.to_s.start_with?('_') }.map do |k, v|
-      "#{k} = #{((v.is_a?(String) || v.to_s =~ /\s/) && v.inspect) || v}"
+      # FOG-34: the value rides a WQL literal, which before this line it did
+      # not: String#inspect is Ruby's grammar, not this engine's — it
+      # rewrites control characters into \t text and #{ into \#{, both
+      # invalid escapes Microsoft WQL refuses at the provider, and it
+      # renders non-Strings unquoted ("WHERE Name = 2026-11-26 12:00:00
+      # +0000"). All of that is refused here instead, before the wire. The
+      # key is no guarantee either: **where binds Symbols, but a Symbol can
+      # carry any text (:"a OR 1=1"), so its shape is enforced, not trusted.
+      "#{Fog::Hyperv::Utils::WqlQuote.column(k)} = #{Fog::Hyperv::Utils::WqlQuote.literal(v)}"
     end
 
     query = "#{query}#{" WHERE #{args.join ' AND '}" unless args.none?}"

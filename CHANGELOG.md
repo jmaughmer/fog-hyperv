@@ -1,5 +1,33 @@
 ## Unreleased
 
+- The `run_wql` WHERE builder now renders caller values as WQL literals
+  through a new single owner, `Fog::Hyperv::Utils::WqlQuote`, instead of Ruby
+  `String#inspect`, and guards the key position by shape. The grammar is the
+  one MEASURED on a live host through this gem's own WinRM path (2026-11-26):
+  the engine this gem dials — Microsoft WQL — delimits string literals with
+  double quotes only (a single-quoted literal is refused: `WBEM_E_INVALID_
+  QUERY`) and honors two escapes inside them, `\\` and `\"`; a backslash
+  before anything else is an invalid escape, and a value ending in a single
+  backslash eats its own closing delimiter. `inspect` is Ruby's grammar: it
+  happened to share the delimiter and both escapes, but it rewrites control
+  characters into `\t` text and `#{` into `\#{` — both invalid escapes this
+  provider refuses after a wire round trip — and it renders non-Strings
+  unquoted (`WHERE Name = 2026-11-26 12:00:00 +0000`). `WqlQuote` emits
+  double-quoted literals with measured escaping, passes apostrophes and
+  typographic quotes as plain content, renders `Integer`, `Float` and
+  booleans bare (the bare integer and TRUE/false forms measured to parse;
+  Float#to_s edge forms are the provider's to refuse, loudly, as at base),
+  and refuses control characters, keys that are not bare property names
+  (`**where` binds Symbols, and a Symbol can carry `a OR 1=1`), and values
+  with no literal rendering. One behaviour change is deliberate and stated:
+  every value that is not `String`, `Integer`, `Float`, `true` or `false`,
+  and every string carrying a control character, now raises `ArgumentError`
+  at the caller where the base emitted a query the WMI provider refused at
+  round-trip cost. No shipped caller passes `where:` values today — every
+  in-repo `run_wql` call is a static query — so this is the sink pinned
+  before the first dynamic caller, closing the M4 finding of the
+  2026-11-26 security review.
+
 - `Server#reload`'s return documentation now states the answers the method
   really gives. The second `@return` line promised nil "if something went
   wrong or the model was not found"; measured against the shipped read, no
