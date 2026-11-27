@@ -67,8 +67,8 @@ class Fog::Hyperv::Compute
     #   @return [Array<String>,nil] the cluster's preferred owners for this role:
     #     the nodes it PREFERS to run the machine on, asked group by group of
     #     Get-ClusterOwnerNode (the measured source on Server 2025 /
-    #     FailoverCluster 26100 — evidence
-    #     section 76; the group's own PreferredNodeNames property is NULL). The
+    #     FailoverCluster 26100 — evidence section 76; the group's own
+    #     PreferredNodeNames property is NULL). The
     #     three states are different claims and are kept apart verbatim: a list
     #     of names is a restricted preference, [] is the cluster's positive "no
     #     restricted list — any node may own" answer, and nil means this group's

@@ -251,8 +251,8 @@ module Fog
     # `:cluster_role_owner_nodes` means the clustered-role read carries the
     # cluster's preferred owners per role: build_read_script asks
     # Get-ClusterOwnerNode of every matched group (the measured source on
-    # Server 2025 / FailoverCluster 26100 — the
-    # group's own PreferredNodeNames property is NULL, evidence section 76) and
+    # Server 2025 / FailoverCluster 26100 — the group's own PreferredNodeNames
+    # property is NULL, evidence section 76) and
     # the model answers preferred_node_names, where a list of names is a
     # restricted preference, [] is the cluster's own "no restricted list — any
     # node may own" answer, and nil means that group's owner read failed —

@@ -21,7 +21,7 @@
   now scoped to the build that measured it rather than left to inherit the
   citation beside it. Comment-only: no shipped code changed, and the suite
   answers 488 tests / 1529 assertions identically on branch and base across
-  six seeds
+  six seeds.
 - `Real#supports_clusters?` now memoises its answer — true and false alike —
   for the life of the client (FOG-36, whole-fork review of 2026-11-26). The
   probe is a live `root/mscluster` WQL round trip; the FOG-28 model memos kept

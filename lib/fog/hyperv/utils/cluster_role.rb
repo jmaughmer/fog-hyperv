@@ -194,8 +194,8 @@ module Fog
         # probed the direct property (its 2026-11-27 pass re-probed the
         # removal cmdlet and the classifier answers, not this property), and
         # correctness does not lean on which shape a build has: the value the
-        # -VMId filter itself matches on lives on the group's `Virtual
-        # Machine` resource as the VMId cluster parameter, so both scripts
+        # -VMId filter itself matches on lives on the group's `Virtual Machine`
+        # resource as the VMId cluster parameter, so both scripts
         # resolve it from there when the direct property is null — and the
         # 2026-11-27 2022 ride added a role and read it back through these
         # very scripts, which resolve the id through this helper (RUNBOOK
