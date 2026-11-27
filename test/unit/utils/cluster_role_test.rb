@@ -175,13 +175,14 @@ class UnitClusterRoleTest < Minitest::Test
   # -- the machine id's real home (FOG-16, measured on the lab cluster) ------
   #
   # A real cluster group matched by -VMId carries VmID = NULL: the property
-  # the original scripts read is not populated on the measured build, so a
-  # read attributed nothing (RoleReadUninterpretable on its own match) and a
-  # removal refused itself before removing (the '' -ne id arm fired). The id's
-  # real home is the VM resource's VMId cluster parameter — the same value
-  # the -VMId filter matches on — so both scripts resolve through it when the
-  # direct property is null, and a group whose id cannot be resolved at all
-  # stays refused rather than being read as agreement.
+  # the original scripts read is not populated on the build the capture ran
+  # on (Server 2025 / FailoverCluster 26100), so a read attributed nothing
+  # (RoleReadUninterpretable on its own match) and a removal refused itself
+  # before removing (the '' -ne id arm fired). The id's real home is the VM
+  # resource's VMId cluster parameter — the same value the -VMId filter
+  # matches on — so both scripts resolve through it when the direct property
+  # is null, and a group whose id cannot be resolved at all stays refused
+  # rather than being read as agreement.
 
   def test_the_read_script_resolves_the_machine_id_from_the_vm_resource
     script = subject.build_read_script(vm_id: GUID, name: nil)

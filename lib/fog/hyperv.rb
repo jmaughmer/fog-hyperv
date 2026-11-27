@@ -243,15 +243,16 @@ module Fog
     # auto_failback_type and the failback window (with the model reading the
     # measured 4294967295 sentinel as no window), and
     # set_cluster_virtual_machine_role_auto_failback writes the one HA group
-    # property this build takes as a direct property write — automatic
-    # failback — through a script that identifies the group before touching it
-    # and proves the write by a fresh read-back, raising
+    # property Server 2025 / FailoverCluster 26100 takes as a direct property
+    # write — automatic failback — through a script that identifies the group
+    # before touching it and proves the write by a fresh read-back, raising
     # RolePropertyWriteRefused or ClusterRoleNotFound instead of reporting a
     # setting the cluster never accepted.
     # `:cluster_role_owner_nodes` means the clustered-role read carries the
     # cluster's preferred owners per role: build_read_script asks
-    # Get-ClusterOwnerNode of every matched group (the measured source — the
-    # group's own PreferredNodeNames property is NULL, evidence section 76) and
+    # Get-ClusterOwnerNode of every matched group (the measured source on
+    # Server 2025 / FailoverCluster 26100 — the group's own PreferredNodeNames
+    # property is NULL, evidence section 76) and
     # the model answers preferred_node_names, where a list of names is a
     # restricted preference, [] is the cluster's own "no restricted list — any
     # node may own" answer, and nil means that group's owner read failed —

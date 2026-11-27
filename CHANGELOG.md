@@ -1,5 +1,27 @@
 ## Unreleased
 
+- Every single-build claim in the shipped comments now names the build its
+  evidence was captured on (FOG-39, FOG-38's recorded follow-up). Thirteen
+  sites across five files spoke as though the lab had one build: six said
+  "the measured build" outright (the role scripts' VmID NULL home and its
+  test header, the role-group naming rule, the AutoFailbackType write
+  acceptance, the failback-window write refusal, and the owner-node test
+  header), one used the same phrase two lines above a block that was already
+  being corrected — invisible to a line-based grep, since it wrapped — and
+  the rest rode on "this build", "every build", or a bare unqualified
+  universal ("the direct VmID property is NULL on real machine-role groups")
+  with no build at all. Each now names Server 2025 / FailoverCluster 26100,
+  the build every one of those captures ran on, and the role-group naming
+  rule names both builds — the 26100 capture and the 2022 / 20348 lineage's
+  2026-11-27 role round trip, which produced the same bare-name group. Where
+  a fact was NOT re-probed on the 2022 lineage (the direct VmID property,
+  the two HA-settings writes, the HA properties as reads) the comment says
+  that probe is open instead of letting the claim borrow the other build's
+  measurement. One unbounded universal ("they read fine on every build") is
+  now scoped to the build that measured it rather than left to inherit the
+  citation beside it. Comment-only: no shipped code changed, and the suite
+  answers 488 tests / 1529 assertions identically on branch and base across
+  six seeds.
 - `Real#supports_clusters?` now memoises its answer — true and false alike —
   for the life of the client (FOG-36, whole-fork review of 2026-11-26). The
   probe is a live `root/mscluster` WQL round trip; the FOG-28 model memos kept
