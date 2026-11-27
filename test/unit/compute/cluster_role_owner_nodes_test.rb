@@ -9,8 +9,9 @@ require 'fog/json'
 # failback properties did, so the VM detail page can show what Failover
 # Cluster Manager's Owners tab shows without a second round trip.
 #
-# Everything here is pinned to the measured build (evidence section 76),
-# which overturned the fixture's story: PreferredNodeNames is NOT a
+# Everything here is pinned to the build the lab's owner-node and failover
+# captures ran on (Server 2025 / FailoverCluster 26100, evidence section
+# 76), which overturned the fixture's story: PreferredNodeNames is NOT a
 # ClusterGroup property (it answers $null); the cmdlet is
 # Get-ClusterOwnerNode -Group, whose objects carry ClusterObject + OwnerNodes
 # (not the documented Group/Owners); the bare unfiltered call answers nothing

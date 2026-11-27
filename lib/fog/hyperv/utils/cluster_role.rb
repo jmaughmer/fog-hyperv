@@ -185,13 +185,18 @@ module Fog
         # notice is transport noise, never an outcome.
         # The machine id's real home (FOG-16, measured on the lab cluster
         # 2026-11-21): a real cluster group matched by -VMId reports VmID as
-        # NULL — the property is not populated on the measured build, and the
-        # original scripts read nothing from it but ''. The value the -VMId
-        # filter itself matches on lives on the group's `Virtual Machine`
-        # resource as the VMId cluster parameter, so both scripts resolve it
-        # from there when the direct property is null. Both embed this one
-        # helper: a read and a removal must never disagree about which machine
-        # a group belongs to.
+        # NULL — the property is not populated on the build it was measured
+        # on (Server 2025 / FailoverCluster 26100), and the original scripts
+        # read nothing from it but ''. The 2022 / 20348 line has not probed
+        # the direct property, and correctness does not lean on which shape a
+        # build has: the scripts resolve from the cluster parameter exactly
+        # when the direct property is null, and the 2022 lineage's role
+        # round trip resolved identity through that helper. The value the
+        # -VMId filter itself matches on lives on the group's `Virtual
+        # Machine` resource as the VMId cluster parameter, so both scripts
+        # resolve it from there when the direct property is null. Both embed
+        # this one helper: a read and a removal must never disagree about
+        # which machine a group belongs to.
         VM_ID_HELPER = <<~PS
           function Get-FogHypervGroupVmId {
             param ($group)
