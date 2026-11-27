@@ -9,14 +9,18 @@ require 'test_helper'
 # they are re-asked. Before this PR the guard that decides whether the cluster
 # question can be asked ran BEFORE the tri-state memo check, so every call to
 # is_clustered on a model with an id dialled root/mscluster over WinRM even
-# when the answer had been given seconds ago (Real#supports_clusters? is a
-# WQL round trip; only this model caches its outcome). And #reload refreshed
+# when the answer had been given seconds ago (Real#supports_clusters? was then
+# a round trip per ask and nothing above the connection cached it; the model
+# memo this PR added became the first cache, and FOG-36 later added the
+# client-level one). And #reload refreshed
 # the payload while leaving @cluster_role in place — so a model held across a
 # live migration re-merged the machine's data and still answered the OLD
 # owner_node, which is exactly the staleness #owner_node exists to avoid.
 #
 # The contract now: the first call asks the role once (the capability gate
-# dials twice on the cold path, as on base), every later call on a model that
+# still ASKS twice on the cold path, but since FOG-36 a Real client answers
+# the second ask from its own memo — and on the Mock these tests run on, an
+# ask is a fixture read either way), every later call on a model that
 # holds an answer is free, and #reload is the one thing that makes the model
 # re-ask. A gate that flips AFTER an answer was given (the endpoint stops
 # answering cluster questions) does not erase the answer — it was the
@@ -45,8 +49,11 @@ class UnitServerClusterMemoTest < Minitest::Test
 
   # Counts endpoint probes for the rest of the test. Mock#supports_clusters?
   # answers from the get_cluster fixture instead of dialling — the stand-in
-  # this fork gives the WQL probe a Real client pays over the wire — so
-  # counting it counts the round trips a Real client of this build would pay.
+  # this fork gives the WQL probe a Real client pays over the wire. The count
+  # is of ASKS: on a Real client of this build the first ask per session is
+  # the one dial (FOG-36 memoises the answer), and on these Mocks every ask
+  # re-reads the fixture, so a model-level memo pin measured here counts the
+  # model's asks, exactly what this suite has always pinned.
   def probe_counter
     counter = { n: 0 }
     @client.define_singleton_method(:supports_clusters?) do

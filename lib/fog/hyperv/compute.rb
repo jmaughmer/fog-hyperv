@@ -272,14 +272,44 @@ module Fog::Hyperv
         false
       end
 
-      # Does the Hyper-V install support clusters - i.e. is the machine joined to a failover cluster
+      # Does the Hyper-V install support clusters - i.e. is the machine joined
+      # to a failover cluster. Memoised on the client for the session's life
+      # (the answer true or false; a Name-less row, a shape this fork has
+      # never measured, rides the memo as the nil base returned): the probe
+      # is a live root/mscluster WQL round trip, a host's membership does not
+      # change underneath a live client session any more than the identity
+      # this client already trusts for the connection's whole lifetime (the
+      # host-name set connect derives is read once per connect and its
+      # readers never re-dial), and the consumers asking most are exactly the
+      # ones a wrong direction cannot rescue - the stand-alone destroy gate
+      # asks on every attempt, and a cold model's first classification used
+      # to pay the probe twice (the guard in Server#cluster_queriable? and
+      # the one in #cluster_role before the role read). What the memo means
+      # on purpose: a host that joins or leaves a cluster while this client
+      # lives keeps the answer it gave, and rebuilding the endpoint's client
+      # (the compute-resource reconnect that refreshes everything else about
+      # it) is the re-ask. An error is a remembered no, not a remembered
+      # question, and the rescue cannot tell the two shapes of error apart:
+      # the measured stand-alone refusal (no cluster namespace, an answer
+      # that can never change) and a transport flap on a joined host (where
+      # a later ask would likely learn differently, and where base re-asked
+      # on the next call) are both remembered no for this session -
+      # fail-closed until the same reconnect that refreshes everything else.
+      # Callers racing a cold client may each dial once; every later ask
+      # rides the memo. Mock does NOT memoise - its answer is a fixture read
+      # with no wire cost, and mock suites redefine this method to model gate
+      # flips.
       # @return [Boolean] is the Hyper-V setup possible to cluster
       def supports_clusters?
-        # run_wql already returns the first instance, and appends /* itself
-        run_wql('SELECT Name FROM MSCluster_ResourceGroup', _namespace: 'root/mscluster')[:name] && true
-      rescue StandardError => e
-        logger.debug "Cluster support checking failed with #{e.class}: #{e.message}"
-        false
+        return @supports_clusters if instance_variable_defined?(:@supports_clusters)
+
+        @supports_clusters = begin
+          # run_wql already returns the first instance, and appends /* itself
+          run_wql('SELECT Name FROM MSCluster_ResourceGroup', _namespace: 'root/mscluster')[:name] && true
+        rescue StandardError => e
+          logger.debug "Cluster support checking failed with #{e.class}: #{e.message}"
+          false
+        end
       end
 
       # Does this build's connection path accept only hosts inside the

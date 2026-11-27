@@ -1,5 +1,31 @@
 ## Unreleased
 
+- `Real#supports_clusters?` now memoises its answer — true and false alike —
+  for the life of the client (FOG-36, whole-fork review of 2026-11-26). The
+  probe is a live `root/mscluster` WQL round trip; the FOG-28 model memos kept
+  it off steady-state model calls, but every cold model's first cluster
+  question still paid it, the cold classification paid it TWICE (the guard in
+  `Server#cluster_queriable?` and the one inside `#cluster_role`'s cold read
+  before the role lookup), and the plugin's stand-alone destroy gate asks on
+  every destroy attempt against an endpoint that can never answer yes — the
+  cold double-probe cost 4-9 RTT per model, and one refused probe is a full
+  command group (~3-5 s of wire time at this fork's satellite budget;
+  whole-fork review 2026-11-26); the memo erases every one after the first.
+  (The destroy gate's own cluster-membership read is a different query with
+  a different owner and keeps its dial by design.) A host's cluster
+  membership does not change underneath a live client session any more than
+  the endpoint identity this client already trusts for the connection's
+  whole lifetime, so a host that joins or leaves a cluster mid-session keeps
+  the answer it gave; rebuilding the endpoint's client (the compute-resource
+  reconnect) is the re-ask. An errored first probe is remembered as the
+  fail-closed `false` it already returned — the rescue cannot tell the
+  measured stand-alone refusal (an answer that can never change) from a
+  transport flap on a joined host (where a later ask would likely learn
+  differently): both are remembered no until the client is rebuilt.
+  `Mock#supports_clusters?`
+  deliberately does NOT memoise: its answer is a fixture read with no wire
+  cost, and the mock-based suites redefine the method to model gate flips.
+
 - `fetch_url_to_path` now rides a per-call WinRM operation window computed
   from the `size:` it already carries (FOG-35, whole-fork review of
   2026-11-26). The window the WinRM service enforces travels in the
