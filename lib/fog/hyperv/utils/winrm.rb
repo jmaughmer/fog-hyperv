@@ -100,13 +100,23 @@ module Fog::Hyperv::Utils::Winrm
   # @param cmd [String] the PowerShell command to execute
   # @param _skip_json [Boolean] should the return data be returned as-is, instead of being sent as JSON
   # @param _target_computer [String,nil] the computer to execute the command on, in case of clustering
+  # @param _operation_timeout [Integer,nil] a per-call WinRM operation window in
+  #   seconds (FOG-35): the call then rides a dedicated connection carrying that
+  #   window instead of the connection's configured one, because the window the
+  #   WinRM service enforces travels in a per-connection header. Only a call that
+  #   knows its own duration — today, the boot-disk pull — names one; every
+  #   ordinary call leaves this nil and rides the configured connection unchanged.
   # @param options [Hash] the options to call the command with
   # @option options [Integer] _json_depth (1) the depth to limit the JSON object to on return
   # @return [Hash] the returned object from PowerShell
-  def run_cmd(cmd, _skip_json: false, _target_computer: nil, **options)
+  def run_cmd(cmd, _skip_json: false, _target_computer: nil, _operation_timeout: nil, **options)
     _json_depth = options.delete(:_json_depth) { 1 }
 
-    run_cmdlist([[cmd, options.dup]], skip_json: _skip_json, json_depth: _json_depth, target_computer: _target_computer)
+    run_cmdlist([[cmd, options.dup]],
+                skip_json: _skip_json,
+                json_depth: _json_depth,
+                target_computer: _target_computer,
+                operation_timeout: _operation_timeout)
   end
 
   # Run a list of commands on the Hyper-V system
@@ -114,9 +124,15 @@ module Fog::Hyperv::Utils::Winrm
   # @param skip_json [Boolean] should the return value be given as-is, instead of being sent as JSON
   # @param target_computer [String,nil] the computer to execute the command on, in case of clustering
   # @param separate_calls [Boolean] should the commands be run separately
+  # @param operation_timeout [Integer,nil] a per-call operation window routing this
+  #   list onto a long_operation_connection (see run_cmd's _operation_timeout);
+  #   the host routing and the endpoint-set check run FIRST and unchanged, so the
+  #   variant only ever replaces the connection for a host the call was already
+  #   allowed to reach
   # @param options [Hash] additional options for the call
   # @option options [Integer] json_depth (1) the depth to limit the JSON object to on return
-  def run_cmdlist(commands, skip_json: false, target_computer: nil, separate_calls: false, **options)
+  def run_cmdlist(commands, skip_json: false, target_computer: nil, separate_calls: false, # rubocop:disable Metrics/ParameterLists
+                  operation_timeout: nil, **options)
     target_computer = [target_computer].flatten.compact
     target_computer << '.' if target_computer.empty?
 
@@ -126,7 +142,11 @@ module Fog::Hyperv::Utils::Winrm
 
     out = nil
     target_computer.each do |computer|
-      connection(computer).shell(:powershell) do |shell|
+      # The set check and routing happen in connection(); the window, when the
+      # caller named one, then swaps ONLY the connection, never the host.
+      conn = connection(computer)
+      conn = long_operation_connection(conn, operation_timeout) if operation_timeout
+      conn.shell(:powershell) do |shell|
         pscalls = commands.map.with_index do |(command, args), idx|
           last = idx == commands.size - 1
           build_pscall(command, _to_json: last && !skip_json, _json_depth: json_depth, **args)
@@ -608,6 +628,43 @@ module Fog::Hyperv::Utils::Winrm
     end
 
     connection
+  end
+
+  # A connection carrying ONE wider operation window (FOG-35, whole-fork review).
+  # The window the WinRM service enforces for a command travels in the
+  # OperationTimeout header ruby-winrm builds from the CONNECTION's
+  # operation_timeout — wsmv/header.rb shared_headers in winrm-2.3.9, merged
+  # into every message builder — so a per-CALL window cannot be said on the
+  # socket; it is a connection option, and the only way to give one call a
+  # different window is to build that call its own connection carrying it. The
+  # build is cheap: WinRM::Connection.new only normalises options (the socket
+  # opens at shell()), the gem pairs a widened operation_timeout with its
+  # receive_timeout itself (connection_opts.rb lifts a smaller receive to
+  # operation_timeout + 10 at build time), and the variant is cached per
+  # endpoint-and-window, so a long call repeated costs one build, not one per
+  # call. It lives OUTSIDE the @connections host map on purpose: a variant that
+  # could answer a host lookup would silently move ordinary traffic onto a
+  # widened window.
+  # @param base [WinRM::Connection] the connection the call was already routed
+  #   through — its endpoint and credentials are the variant's, unchanged
+  # @param operation_timeout [Integer] the window in seconds, positive
+  # @return [WinRM::Connection] the lazily-built variant
+  def long_operation_connection(base, operation_timeout)
+    unless operation_timeout.is_a?(Integer) && operation_timeout.positive?
+      raise ArgumentError,
+            "long_operation_connection takes a positive Integer window in seconds and got #{operation_timeout.inspect}"
+    end
+
+    base_opts = base.instance_variable_get(:@connection_opts)
+    @long_operation_connections ||= {}
+    @long_operation_connections[[base_opts[:endpoint], operation_timeout]] ||= begin
+      require 'winrm'
+      opts = base_opts.merge(operation_timeout: operation_timeout)
+      Fog::Logger.debug "Creating long-operation WinRM connection with #{opts.merge password: '<REDACTED>', key_pass: '<REDACTED>'}"
+      connection = WinRM::Connection.new opts
+      connection.logger.level = :error
+      connection
+    end
   end
 end
 # rubocop:enable Metrics/ModuleLength

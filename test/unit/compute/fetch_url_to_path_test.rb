@@ -189,4 +189,63 @@ class UnitFetchUrlToPathTest < Minitest::Test
 
     assert_empty @client.list_calls, 'refused at the signature, no traffic'
   end
+
+  # --- the operation window this one call rides (FOG-35) -------------------------
+
+  # The WinRM operation timeout is a PER-CONNECTION setting (the gem answers 60 s
+  # when nobody configures it; this fork's plugin pins 90), and the whole pull
+  # script — download, size check, sha256 — must finish inside it. The whole-fork
+  # review of 2026-11-26 measured the consequence for the bootdisk ride: a fixed
+  # window caps the transfer at ~90 s x link throughput, and the abort bypasses
+  # the script's own .part cleanup. This request already carries `size:`, so it
+  # is the one that can compute the window: one MiB/s of budget, clamped to
+  # [90, 3600] seconds, and never below the operation timeout the client itself
+  # was configured with — the window this call adds can widen, never narrow.
+
+  def last_options
+    @client.list_calls.last.last
+  end
+
+  def window_for(size, client = @client)
+    client.fetch_url_to_path(url: URL, path: DEST, sha256: SHA, size: size, computer_name: 'HV-NODE2')
+    client.list_calls.last.last[:operation_timeout]
+  end
+
+  def test_the_pull_window_scales_with_the_size_it_carries
+    assert_equal 90, window_for(245),
+                 'a tiny file still rides the 90 s floor — scaling never shortens the window it replaced'
+
+    # The measured full-host ISO: 245,366,784 bytes is 234.0 MiB, and at the
+    # one-MiB/s budget the answer is 234 s — the review's arithmetic (245 MB
+    # against a fixed 90 s needs ~2.8 MB/s) stops being a cliff.
+    assert_equal 234, window_for(245_366_784), 'the measured ISO gets its seconds at 1 MiB/s, not a fixed 90'
+
+    assert_equal 3_600, window_for(10 * (1024**3)), 'and the scaling is capped: no computed window runs past an hour'
+  end
+
+  def test_the_window_never_lowers_a_configured_operation_timeout
+    pinned = RecordingClient.new(hyperv_endpoint: 'http://recorded.invalid:5985/wsman', hyperv_operation_timeout: 120)
+
+    assert_equal 120, window_for(245, pinned),
+                 'an operator-pinned 120 beats the 90 floor: this call may widen the window, never narrow it'
+    assert_equal 234, window_for(245_366_784, pinned),
+                 'and the scaled window beats a SMALLER configured value for the big ride — max, not override'
+
+    wide = RecordingClient.new(hyperv_endpoint: 'http://recorded.invalid:5985/wsman', hyperv_operation_timeout: 7_200)
+
+    assert_equal 7_200, window_for(245_366_784, wide),
+                 'an explicit pin above the hour-cap is respected as-is: the cap bounds the COMPUTED window'
+  end
+
+  def test_the_window_rides_the_one_call_and_leaks_nothing_into_the_script
+    call_fetch(size: 245_366_784)
+
+    assert_equal 1, @client.list_calls.size, 'the window is an option on the pull, not an extra round trip'
+
+    commands, = @client.list_calls.first
+    _command, args = commands.first
+
+    assert_empty args, 'the meta-argument is consumed by the plumbing; the pscall args stay clean'
+    assert_equal 234, last_options[:operation_timeout]
+  end
 end

@@ -1,5 +1,33 @@
 ## Unreleased
 
+- `fetch_url_to_path` now rides a per-call WinRM operation window computed
+  from the `size:` it already carries (FOG-35, whole-fork review of
+  2026-11-26). The window the WinRM service enforces travels in the
+  `OperationTimeout` header ruby-winrm builds from the CONNECTION's
+  `operation_timeout` — measured on the installed winrm-2.3.9:
+  `wsmv/header.rb` `shared_headers` merges it into every message builder, and
+  the gem's defaults are 60 s operation / 70 s receive, with a configured
+  receive below the operation lifted to operation + 10 at build
+  (`connection_opts.rb`). A fixed window therefore capped every boot-disk
+  pull at window x link throughput regardless of ISO size — the review
+  measured the cliff: a 245 MB ISO in the plugin's pinned 90 s needs ~2.8 MB/s
+  effective, and an expiry abort mid-download bypasses the script's own
+  `.part` cleanup. The request now computes `size / 1 MiB/s` — below every
+  pull rate this fork has measured (the 148.9 MB/s spike ride included) —
+  clamped to `[90, 3600]` seconds: the floor keeps the plugin's pinned window
+  for small files, the cap bounds the COMPUTED window at an hour (3600 MiB at
+  the budget — just over 3.5 GiB), and an explicitly configured longer `hyperv_operation_timeout`
+  is respected above the cap — the window only ever widens what an operator
+  asked for. A per-call window needs its own connection because the header is
+  per-connection, so `run_cmd` gained `_operation_timeout:` routed through
+  `run_cmdlist` to a new `long_operation_connection`: a lazily-built
+  `WinRM::Connection` variant (no socket at build) carrying the routed base
+  connection's own options with only the window widened, cached per
+  endpoint-and-window, and deliberately kept OUT of the `@connections` host
+  map so it can never answer a host lookup and silently move ordinary traffic
+  onto a widened window. The host set-check and routing run first and
+  unchanged; every call that names no window rides the configured connection
+  exactly as before, and the pull still costs exactly one command round trip.
 - The `run_wql` WHERE builder now renders caller values as WQL literals
   through a new single owner, `Fog::Hyperv::Utils::WqlQuote`, instead of Ruby
   `String#inspect`, and guards the key position by shape. The grammar is the
