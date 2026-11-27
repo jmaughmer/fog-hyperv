@@ -40,6 +40,11 @@ class Fog::Hyperv::Compute
     #
     # No Mock, like remove_file: the answer is a marker the script prints, not a
     # drive shape a fixture could carry.
+    #
+    # The one call rides its OWN operation window (FOG-35, whole-fork review):
+    # see pull_operation_timeout below — the download, the size check and the
+    # Get-FileHash must all finish inside the WinRM operation window, and a
+    # window fixed per connection makes a big ISO a cliff on a slow link.
     def fetch_url_to_path(url:, path:, sha256:, size:, computer_name: nil)
       raise ArgumentError, "url must be an http(s) URL the host can reach; got #{url.inspect}" unless url.to_s.match?(%r{\Ahttps?://})
 
@@ -51,7 +56,8 @@ class Fog::Hyperv::Compute
       out = run_cmd(
         Fog::Hyperv::Utils::FilePull.build_script(url: url, path: dest, sha256: sha256, size: size),
         _skip_json: true,
-        _target_computer: computer_name
+        _target_computer: computer_name,
+        _operation_timeout: pull_operation_timeout(size)
       )
 
       # The script's last act prints PULLED=<bytes> and nothing else can reach
@@ -66,6 +72,35 @@ class Fog::Hyperv::Compute
               "the pull printed #{out.stdout.to_s.inspect}; it prints PULLED=<bytes> and nothing else, " \
               'so how many verified bytes landed is unknown'
       end
+    end
+
+    # The budget under which the window is computed (FOG-35): one MiB per
+    # second, a rate set BELOW every pull rate this fork has measured — the
+    # spike's 148.9 MB/s LAN ride included — so a link fast enough for any
+    # measured pull finishes inside its window with room, and a slower link
+    # gets proportionally more time instead of hitting a fixed-window cliff.
+    # The window it yields is clamped at both ends. The 90 s floor is the
+    # window the plugin pins for its boot-disk clients today, so the caller
+    # that matters keeps the window it has always had for small files (and a
+    # client that configured nothing — the gem's own 60 s default — is
+    # widened, never narrowed, by this change). The 3600 s cap bounds the
+    # COMPUTED window: an hour at the budget is 3600 MiB — just over 3.5 GiB
+    # — and a size needing more than that is a size the caller should
+    # re-examine, not a download the gem babysits overnight. One value rides above the cap on purpose: a
+    # client explicitly configured with a longer hyperv_operation_timeout
+    # keeps it — the window this method computes can only ever widen an
+    # operator's explicit number, never narrow it.
+    PULL_MIN_BYTES_PER_SECOND = 1_048_576
+    PULL_OPERATION_TIMEOUT_FLOOR = 90
+    PULL_OPERATION_TIMEOUT_CEILING = 3_600
+
+    # @param size [Integer] the byte count the request already carries
+    # @return [Integer] the per-call WinRM operation window in seconds
+    def pull_operation_timeout(size)
+      computed = (size + PULL_MIN_BYTES_PER_SECOND - 1) / PULL_MIN_BYTES_PER_SECOND
+      computed = PULL_OPERATION_TIMEOUT_FLOOR if computed < PULL_OPERATION_TIMEOUT_FLOOR
+      computed = PULL_OPERATION_TIMEOUT_CEILING if computed > PULL_OPERATION_TIMEOUT_CEILING
+      [computed, @hyperv_operation_timeout.to_i].max
     end
   end
 end
