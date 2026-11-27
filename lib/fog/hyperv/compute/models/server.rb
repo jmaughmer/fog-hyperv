@@ -504,13 +504,16 @@ class Fog::Hyperv::Compute
     #   root/mscluster round trip, and for a model the guard could ask
     #   about, running it before the memo check billed it to every call —
     #   the count this PR changes). A first call still pays the probes the
-    #   question needs: one when a role read has already populated
-    #   #cluster_role's memo, two when this call is what warms it —
-    #   #cluster_role's own askable-guard dials on its cold read, exactly
-    #   as base paid. Every later call on a model that HOLDS an answer is
-    #   free; a model that was never answered keeps probing per call on an
-    #   endpoint that cannot answer it, as it always did (the no-id model
-    #   short-circuits before any probe, also as it always did). An answer
+    #   question needs: since FOG-36 the client memoises Real#supports_clusters?
+    #   itself, so the mscluster dial happens once per client session and even
+    #   this method's cold path — which asks through this guard AND
+    #   #cluster_role's askable-guard — dials once, not the two base paid
+    #   (the method is still CALLED twice; the second call rides the client's
+    #   memory). Every later call on a model that HOLDS an answer is
+    #   free; a model that was never answered keeps ASKING per call on an
+    #   endpoint that cannot answer it, as it always did — since FOG-36 the
+    #   client's memo answers those asks without a dial (the no-id model
+    #   short-circuits before any ask, also as it always did). An answer
     #   therefore outlives a gate that flips after it
     #   was given — the endpoint gave it while it could. #reload is what
     #   re-asks: it drops this memo and #cluster_role's. Fog's own
