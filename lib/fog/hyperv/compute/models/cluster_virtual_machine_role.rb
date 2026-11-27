@@ -7,13 +7,13 @@ class Fog::Hyperv::Compute
   # Read-only and strictly informative, like Cluster itself.
   class ClusterVirtualMachineRole < Fog::Hyperv::Model
     # @!attribute [r] name
-    #   @return [String] the role group's name. Both builds the lab measures
-    #     on name a machine's role group after the machine itself (Server
-    #     2025 / 26100 answered E4-ROLETEST for the VM named E4-ROLETEST, and
-    #     the 2022 / 20348 lineage's 2026-11-27 round trip produced the same
-    #     bare-name group for its ride machine); the "Virtual Machine
-    #     <name>" form is what the fixtures carry, and #vm_name reads
-    #     sensibly under either.
+    #   @return [String] the role group's name. Both builds the lab has
+    #     measured name a machine's role group after the machine itself
+    #     (Server 2025 / 26100 answered E4-ROLETEST for the VM named
+    #     E4-ROLETEST, and the 2022 / 20348 lineage's 2026-11-27 round trip
+    #     produced the same bare-name group for its ride machine); the
+    #     "Virtual Machine <name>" form is what the fixtures carry, and
+    #     #vm_name reads sensibly under either.
     identity :name
 
     # @!attribute [r] state
@@ -45,7 +45,7 @@ class Fog::Hyperv::Compute
     # @!attribute [r] auto_failback_type
     #   @return [Integer,nil] the cluster's AutoFailbackType verbatim: 0 is off,
     #     any other value is some flavour of on. This is the one high-availability
-    #     group property the build it was measured on (Server 2025 /
+    #     group property the build the capture ran on (Server 2025 /
     #     FailoverCluster 26100) accepts as a WRITE on a VM-role group
     #     (evidence section 60); the 2022 / 20348 lineage has not probed the
     #     write. #auto_failback reads it as a boolean.
@@ -54,7 +54,7 @@ class Fog::Hyperv::Compute
     #   @return [Integer,nil] where the cluster's failback window opens, in the
     #     unit the cmdlet reports; a cluster with no window answers the
     #     4294967295 sentinel, which #failback_window reads as nil. Refused as
-    #     a write on the build it was measured on (Server 2025 /
+    #     a write on the build the capture ran on (Server 2025 /
     #     FailoverCluster 26100, evidence section 60) — on that build this
     #     field is display vocabulary; the 2022 / 20348 lineage has not
     #     probed the write.
@@ -66,7 +66,8 @@ class Fog::Hyperv::Compute
     # @!attribute [r] preferred_node_names
     #   @return [Array<String>,nil] the cluster's preferred owners for this role:
     #     the nodes it PREFERS to run the machine on, asked group by group of
-    #     Get-ClusterOwnerNode (measured source on this build — evidence
+    #     Get-ClusterOwnerNode (the measured source on Server 2025 /
+    #     FailoverCluster 26100 — evidence
     #     section 76; the group's own PreferredNodeNames property is NULL). The
     #     three states are different claims and are kept apart verbatim: a list
     #     of names is a restricted preference, [] is the cluster's positive "no

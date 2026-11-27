@@ -171,32 +171,36 @@ module Fog
         # a name has had its quote, backtick, dollar, wildcard, and control
         # characters refused, leaving doubled single quotes as the only escape left
         # to apply. The machine id rides per row as resolved by VM_ID_HELPER — the
-        # direct VmID property is NULL for real machine-role groups on the measured
-        # build — and it is duplicated under virtualMachineId because that is the
-        # attribute name the model — and the plugin behind it — reads.
+        # direct VmID property is NULL for real machine-role groups on the build
+        # the capture ran on (Server 2025 / FailoverCluster 26100) — and it is
+        # duplicated under virtualMachineId because that is the attribute name
+        # the model — and the plugin behind it — reads.
         # The three high-availability properties (AutoFailbackType,
         # FailbackWindowStart, FailbackWindowEnd) ride out verbatim: they read
-        # fine on every build even where their writes are refused (measured on
-        # HV-CL01, evidence section 60), and their interpretation — type 0 is
-        # off, 4294967295 is the measured "no window" sentinel — lives on the
-        # model so mocked and scripted answers read through one rule.
+        # fine on the build the capture ran on (HV-CL01 / Server 2025 /
+        # FailoverCluster 26100, evidence section 60) even where their writes
+        # are refused — reads on the 2022 / 20348 lineage are unprobed — and
+        # their interpretation — type 0 is off, 4294967295 is the measured
+        # "no window" sentinel — lives on the model so mocked and scripted
+        # answers read through one rule.
         # $WarningPreference is silenced because the remote session writes its
         # CredSSP negotiation notice to the warning stream on this transport; that
         # notice is transport noise, never an outcome.
         # The machine id's real home (FOG-16, measured on the lab cluster
         # 2026-11-21): a real cluster group matched by -VMId reports VmID as
-        # NULL — the property is not populated on the build it was measured
+        # NULL — the property is not populated on the build the capture ran
         # on (Server 2025 / FailoverCluster 26100), and the original scripts
-        # read nothing from it but ''. The 2022 / 20348 line has not probed
-        # the direct property, and correctness does not lean on which shape a
-        # build has: the scripts resolve from the cluster parameter exactly
-        # when the direct property is null, and the 2022 lineage's role
-        # round trip resolved identity through that helper. The value the
+        # read nothing from it but ''. The 2022 / 20348 lineage has not
+        # probed the direct property (its 2026-11-27 pass re-probed the
+        # removal cmdlet and the classifier answers, not this property), and
+        # correctness does not lean on which shape a build has: the value the
         # -VMId filter itself matches on lives on the group's `Virtual
         # Machine` resource as the VMId cluster parameter, so both scripts
-        # resolve it from there when the direct property is null. Both embed
-        # this one helper: a read and a removal must never disagree about
-        # which machine a group belongs to.
+        # resolve it from there when the direct property is null — and the
+        # 2026-11-27 2022 ride added a role and read it back through these
+        # very scripts, which resolve the id through this helper (RUNBOOK
+        # §13). Both embed this one helper: a read and a removal must never
+        # disagree about which machine a group belongs to.
         VM_ID_HELPER = <<~PS
           function Get-FogHypervGroupVmId {
             param ($group)
@@ -660,12 +664,14 @@ module Fog
         # - unfiltered reads keep only VirtualMachine groups, and rows come back
         #   with virtual_machine_id mirrored from vm_id: the script resolves the
         #   id through VM_ID_HELPER (the direct VmID property is NULL on real
-        #   machine-role groups), while the model — and the plugin behind it —
+        #   machine-role groups on the build the capture ran on, Server 2025 /
+        #   FailoverCluster 26100), while the model — and the plugin behind it —
         #   reads the attribute named virtual_machine_id;
         # - every row carries preferredNodeNames from Get-ClusterOwnerNode asked
-        #   of that one group (the measured source on this build: PreferredNodeNames
-        #   is NULL on the group object itself, and the unfiltered cmdlet answers
-        #   nothing at all — evidence section 76). The unset cluster answers an
+        #   of that one group (the measured source on the build the captures
+        #   ran on — Server 2025 / FailoverCluster 26100, evidence section 76:
+        #   PreferredNodeNames is NULL on the group object itself, and the
+        #   unfiltered cmdlet answers nothing at all). The unset cluster answers an
         #   empty list, which is the POSITIVE "no restricted list, any node may
         #   own" state, so a failed per-group owner read stays $null rather than
         #   collapsing into that []: "unknown" and "unrestricted" are different
